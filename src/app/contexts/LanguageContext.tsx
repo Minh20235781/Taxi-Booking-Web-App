@@ -333,11 +333,6 @@ const translations = {
     profilePhoto: "プロフィール写真",
     changePhoto: "写真を変更",
     imageFormatLimit: "JPG、PNG、最大5MB",
-    personalInformation: "個人情報",
-    firstName: "名",
-    lastName: "姓",
-    emailAddress: "メールアドレス",
-    phoneNumber: "電話番号",
     addressInformation: "住所情報",
     address: "住所",
     city: "市",
@@ -347,7 +342,6 @@ const translations = {
     enterCurrentPassword: "現在のパスワードを入力",
     newPassword: "新しいパスワード",
     enterNewPassword: "新しいパスワードを入力",
-    confirmPassword: "パスワード確認",
     reenterPassword: "パスワードを再入力",
 
     // Edit Profile
@@ -377,7 +371,6 @@ const translations = {
     earnings: "収入",
     weeklyStats: "週間統計",
     monthlyEarnings: "月間収入",
-    totalEarnings: "総収入",
     tripsCompleted: "完了した乗車数",
     hoursOnline: "オンライン時間",
     acceptanceRate: "承認率",
@@ -545,6 +538,7 @@ const translations = {
     quickActions: "Quick Actions",
     bookRide: "Book Ride",
     myReservations: "Reservation",
+    savedAddresses: "Saved Addresses",
     history: "History",
 
     // Booking
@@ -757,11 +751,6 @@ const translations = {
     profilePhoto: "Profile Photo",
     changePhoto: "Change Photo",
     imageFormatLimit: "JPG, PNG, max 5MB",
-    personalInformation: "Personal Information",
-    firstName: "First Name",
-    lastName: "Last Name",
-    emailAddress: "Email Address",
-    phoneNumber: "Phone Number",
     addressInformation: "Address Information",
     address: "Address",
     city: "City",
@@ -771,7 +760,6 @@ const translations = {
     enterCurrentPassword: "Enter current password",
     newPassword: "New Password",
     enterNewPassword: "Enter new password",
-    confirmPassword: "Confirm Password",
     reenterPassword: "Re-enter password",
 
     // Edit Profile
@@ -801,7 +789,6 @@ const translations = {
     earnings: "Earnings",
     weeklyStats: "Weekly Stats",
     monthlyEarnings: "Monthly Earnings",
-    totalEarnings: "Total Earnings",
     tripsCompleted: "Trips Completed",
     hoursOnline: "Hours Online",
     acceptanceRate: "Acceptance Rate",
