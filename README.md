@@ -45,13 +45,15 @@ Backend `.env` also supports:
 - `OSRM_BASE_URL`
 - `HANOI_BBOX` (format: `minLon,minLat,maxLon,maxLat`)
 
-## Main API (Sprint 1)
+## Main API
 
 - `POST /auth/signup`
 - `POST /auth/login`
+- `GET /auth/me`
 - `GET /locations/suggest?q=...`
 - `POST /routes/preview`
-- `POST /bookings/create-flow`
+- `POST /pricing/estimate` — fare from `VehicleClass` + distance/duration (or from/to coords)
+- `POST /bookings/create-flow` — full booking payload (coords, route, fare, scheduled, preferences); requires JWT
 - CRUD for each table:
   - `GET/POST /crud/users`
   - `GET/PUT/DELETE /crud/users/:id`
