@@ -74,9 +74,45 @@ export const api = {
     geometry: { type: string; coordinates: [number, number][] };
   }> => request("/routes/preview", { method: "POST", body: JSON.stringify(payload) }),
 
+  estimatePricing: (payload: {
+    vehicleClassCode: string;
+    distanceMeters?: number;
+    durationSeconds?: number;
+    from?: { lat: number; lon: number };
+    to?: { lat: number; lon: number };
+  }): Promise<{
+    fare: {
+      vehicleClassCode: string;
+      baseFare: number;
+      distanceFare: number;
+      durationFare: number;
+      totalFare: number;
+      distanceMeters: number;
+      durationSeconds: number;
+    };
+  }> => request("/pricing/estimate", { method: "POST", body: JSON.stringify(payload) }),
+
   createBookingFlow: (payload: {
     pickupAddress: string;
     destination: string;
     vehicleClassCode: string;
+    bookingType?: "INSTANT" | "SCHEDULED";
+    scheduledAt?: string;
+    pickupPlaceId?: string;
+    destinationPlaceId?: string;
+    pickupLat?: number;
+    pickupLng?: number;
+    destinationLat?: number;
+    destinationLng?: number;
+    routeDistanceMeters?: number;
+    routeDurationSeconds?: number;
+    estimatedFare?: number;
+    paymentMethod?: string;
+    paymentMethodLabel?: string;
+    preferences?: {
+      languages?: string[];
+      ridePreferences?: string[];
+      specialRequest?: string;
+    };
   }) => request("/bookings/create-flow", { method: "POST", body: JSON.stringify(payload) })
 };
