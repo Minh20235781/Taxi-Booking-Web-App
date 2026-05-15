@@ -5,9 +5,30 @@ const prisma = new PrismaClient();
 
 async function main() {
   const vehicleClasses = [
-    { code: "economy", name: "Economy", baseFare: 20000, pricePerKm: 10000, maxCapacity: 4 },
-    { code: "comfort", name: "Comfort", baseFare: 30000, pricePerKm: 14000, maxCapacity: 4 },
-    { code: "premium", name: "Premium", baseFare: 50000, pricePerKm: 20000, maxCapacity: 4 }
+    {
+      code: "economy",
+      name: "Economy",
+      baseFare: 20000,
+      pricePerKm: 9000,
+      pricePerMinute: 300,
+      maxCapacity: 4
+    },
+    {
+      code: "comfort",
+      name: "Comfort",
+      baseFare: 30000,
+      pricePerKm: 12000,
+      pricePerMinute: 400,
+      maxCapacity: 4
+    },
+    {
+      code: "premium",
+      name: "Premium",
+      baseFare: 50000,
+      pricePerKm: 16000,
+      pricePerMinute: 600,
+      maxCapacity: 4
+    }
   ];
 
   for (const item of vehicleClasses) {
@@ -50,11 +71,16 @@ async function main() {
     create: {
       userId: driverUser.id,
       licenseNumber: "DL-123456",
-      vehiclePlate: "30A-123.45",
+      vehiclePlate: "30A-12345",
       vehicleModel: "Toyota Vios",
+      vehicleYear: "2022",
+      vehicleColor: "white",
+      languages: JSON.stringify(["vietnamese", "japanese"]),
       isOnline: true,
       currentLat: 21.0278,
-      currentLng: 105.8342
+      currentLng: 105.8342,
+      averageRating: 4.9,
+      totalTrips: 47
     }
   });
 }

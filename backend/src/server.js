@@ -26,7 +26,9 @@ const modelMap = {
   bookings: "booking",
   rides: "ride",
   payments: "payment",
-  ratings: "rating"
+  ratings: "rating",
+  messages: "message",
+  savedPaymentMethods: "savedPaymentMethod"
 };
 
 function safeUser(user) {
