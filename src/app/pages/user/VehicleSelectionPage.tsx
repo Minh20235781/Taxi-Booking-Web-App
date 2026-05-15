@@ -9,8 +9,12 @@ import { Input } from "../../components/ui/input";
 import { Car, Users, Briefcase, Check, MapPin, Navigation, Search } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api, type LocationSuggestion } from "../../services/api";
-import { getBookingFlowDraft, updateBookingFlowDraft } from "../../services/bookingFlow";
-import { calculateFare, formatVnd } from "../../services/pricing";
+import {
+  buildScheduledAtFromDraft,
+  getBookingFlowDraft,
+  updateBookingFlowDraft
+} from "../../services/bookingFlow";
+import { calculateFare, fetchFareEstimate, formatVnd } from "../../services/pricing";
 
 export default function VehicleSelectionPage() {
   const navigate = useNavigate();
@@ -26,45 +30,45 @@ export default function VehicleSelectionPage() {
   );
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [vehiclePrices, setVehiclePrices] = useState<Record<string, string>>({});
   const hasLockedRoute = Boolean(pickupSelection && destinationSelection);
   const routeDistance = draft.routeDistanceMeters || 0;
   const routeDuration = draft.routeDurationSeconds || 0;
 
-  const vehicles = [
-    {
-      id: "economy",
-      name: t("economy"),
-      description: t("economyDesc"),
-      icon: Car,
-      capacity: "4人",
-      price: formatVnd(calculateFare("economy", routeDistance, routeDuration).totalFare),
-      eta: "3分",
-    },
-    {
-      id: "comfort",
-      name: t("comfort"),
-      description: t("comfortDesc"),
-      icon: Users,
-      capacity: "4人",
-      price: formatVnd(calculateFare("comfort", routeDistance, routeDuration).totalFare),
-      eta: "5分",
-    },
-    {
-      id: "premium",
-      name: t("premium"),
-      description: t("premiumDesc"),
-      icon: Briefcase,
-      capacity: "4人",
-      price: formatVnd(calculateFare("premium", routeDistance, routeDuration).totalFare),
-      eta: "7分",
-    },
+  const vehicleDefs = [
+    { id: "economy", name: t("economy"), description: t("economyDesc"), icon: Car, capacity: "4人", eta: "3分" },
+    { id: "comfort", name: t("comfort"), description: t("comfortDesc"), icon: Users, capacity: "4人", eta: "5分" },
+    { id: "premium", name: t("premium"), description: t("premiumDesc"), icon: Briefcase, capacity: "4人", eta: "7分" }
   ];
+
+  const vehicles = vehicleDefs.map((vehicle) => ({
+    ...vehicle,
+    price:
+      vehiclePrices[vehicle.id] ||
+      formatVnd(calculateFare(vehicle.id, routeDistance, routeDuration).totalFare)
+  }));
 
   useEffect(() => {
     if (!pickupSelection || !destinationSelection) {
       setErrorMessage("Thiếu tọa độ tuyến đường. Vui lòng quay lại màn trước để chọn lại điểm đón/điểm đến.");
     }
   }, [pickupSelection, destinationSelection]);
+
+  useEffect(() => {
+    if (!routeDistance || !routeDuration) {
+      return;
+    }
+    const codes = ["economy", "comfort", "premium"] as const;
+    Promise.all(
+      codes.map((code) => fetchFareEstimate(code, routeDistance, routeDuration))
+    ).then((fares) => {
+      const next: Record<string, string> = {};
+      codes.forEach((code, index) => {
+        next[code] = formatVnd(fares[index].totalFare);
+      });
+      setVehiclePrices(next);
+    });
+  }, [routeDistance, routeDuration]);
 
   const handleNext = async () => {
     if (!hasLockedRoute) {
@@ -81,10 +85,28 @@ export default function VehicleSelectionPage() {
       return;
     }
     try {
+      const fare = await fetchFareEstimate(selectedVehicle, routeDistance, routeDuration);
+      const scheduledAt = buildScheduledAtFromDraft(draft);
+      const isReservation = draft.entryPoint === "reservation";
+
       const result = await api.createBookingFlow({
         pickupAddress: pickup.trim(),
         destination: destination.trim(),
-        vehicleClassCode: selectedVehicle
+        vehicleClassCode: selectedVehicle,
+        bookingType: isReservation ? "SCHEDULED" : "INSTANT",
+        scheduledAt: isReservation ? scheduledAt : undefined,
+        pickupPlaceId: pickupSelection?.placeId,
+        destinationPlaceId: destinationSelection?.placeId,
+        pickupLat: pickupSelection?.lat,
+        pickupLng: pickupSelection?.lon,
+        destinationLat: destinationSelection?.lat,
+        destinationLng: destinationSelection?.lon,
+        routeDistanceMeters: routeDistance,
+        routeDurationSeconds: routeDuration,
+        estimatedFare: fare.totalFare,
+        paymentMethod: draft.paymentMethodId,
+        paymentMethodLabel: draft.paymentMethodLabel,
+        preferences: draft.preferences
       });
       const selected = vehicles.find((item) => item.id === selectedVehicle);
       updateBookingFlowDraft({
