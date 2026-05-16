@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -8,70 +8,50 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/ta
 import { MapPin, Calendar, Star, Search, Download } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft } from "../../services/bookingFlow";
+import { api } from "../../services/api";
 
 export default function UserRideHistoryPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
+  const [completedRides, setCompletedRides] = useState<any[]>([]);
+  const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRideData = async () => {
+      try {
+        const [completed, upcoming] = await Promise.all([
+          api.getCompletedRides().catch(() => []),
+          api.getUpcomingRides().catch(() => [])
+        ]);
+        setCompletedRides(Array.isArray(completed) ? completed : []);
+        setUpcomingRides(Array.isArray(upcoming) ? upcoming : []);
+      } catch (error) {
+        console.error("Error fetching rides:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRideData();
+  }, []);
 
   const handleBookAgain = () => {
     clearBookingFlowDraft();
     navigate("/user/booking");
   };
 
-  const completedRides = [
-    {
-      id: 1,
-      driver: "Nguyen Thanh",
-      from: "Tran Hung Dao St",
-      to: "Noi Bai Airport",
-      date: "2026-03-27",
-      time: "14:30",
-      price: "350,000 VND",
-      rating: 5,
-    },
-    {
-      id: 2,
-      driver: "Le Van Minh",
-      from: "Ba Trieu St",
-      to: "Old Quarter",
-      date: "2026-03-25",
-      time: "09:15",
-      price: "120,000 VND",
-      rating: 4,
-    },
-    {
-      id: 3,
-      driver: "Tran Duc Anh",
-      from: "Hoan Kiem Lake",
-      to: "Hanoi Station",
-      date: "2026-03-20",
-      time: "16:45",
-      price: "180,000 VND",
-      rating: 5,
-    },
-    {
-      id: 4,
-      driver: "Pham Hoang Long",
-      from: "West Lake",
-      to: "Vincom Center",
-      date: "2026-03-18",
-      time: "11:20",
-      price: "95,000 VND",
-      rating: 4,
-    },
-  ];
+  // Filter rides based on search query
+  const filteredCompleted = completedRides.filter(ride =>
+    ride.to.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ride.date.includes(searchQuery) ||
+    ride.driver.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const upcomingRides = [
-    {
-      id: 1,
-      from: "Tran Hung Dao St",
-      to: "Noi Bai Airport",
-      date: "2026-03-30",
-      time: "08:00",
-      vehicle: "premium",
-    },
-  ];
+  const filteredUpcoming = upcomingRides.filter(ride =>
+    ride.to.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ride.date.includes(searchQuery)
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -103,132 +83,152 @@ export default function UserRideHistoryPage() {
 
             {/* Completed Rides */}
             <TabsContent value="completed" className="space-y-4">
-              {completedRides.map((ride) => (
-                <Card key={ride.id} className="p-6 hover:shadow-lg transition-shadow">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-bold text-lg">{ride.driver}</h3>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                          <span className="text-sm font-semibold">{ride.rating}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2 mb-3">
-                        <div className="flex items-start gap-2">
-                          <div className="bg-green-500 rounded-full p-1 mt-1">
-                            <div className="w-2 h-2 bg-white rounded-full"></div>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">{t("pickupPoint")}</p>
-                            <p className="font-semibold">{ride.from}</p>
+              {loading ? (
+                <Card className="p-6 text-center text-gray-500">
+                  {t("loading") || "读み込み中..."}
+                </Card>
+              ) : filteredCompleted.length === 0 ? (
+                <Card className="p-6 text-center text-gray-500">
+                  {searchQuery ? t("noResults") || "検索結果がありません" : t("noCompletedRides") || "完了した乗車がありません"}
+                </Card>
+              ) : (
+                filteredCompleted.map((ride) => (
+                  <Card key={ride.id} className="p-6 hover:shadow-lg transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-bold text-lg">{ride.driver}</h3>
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            <span className="text-sm font-semibold">{ride.rating}</span>
                           </div>
                         </div>
                         
-                        <div className="flex items-start gap-2">
-                          <MapPin className="h-4 w-4 text-red-500 fill-red-500 mt-1" />
-                          <div>
-                            <p className="text-sm text-gray-600">{t("destinationPoint")}</p>
-                            <p className="font-semibold">{ride.to}</p>
+                        <div className="space-y-2 mb-3">
+                          <div className="flex items-start gap-2">
+                            <div className="bg-green-500 rounded-full p-1 mt-1">
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">{t("pickupPoint")}</p>
+                              <p className="font-semibold">{ride.from}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start gap-2">
+                            <MapPin className="h-4 w-4 text-red-500 fill-red-500 mt-1" />
+                            <div>
+                              <p className="text-sm text-gray-600">{t("destinationPoint")}</p>
+                              <p className="font-semibold">{ride.to}</p>
+                            </div>
                           </div>
                         </div>
+
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-4 w-4" />
+                            <span>{ride.date}</span>
+                          </div>
+                          <span>{ride.time}</span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          <span>{ride.date}</span>
-                        </div>
-                        <span>{ride.time}</span>
+                      <div className="text-right">
+                        <p className="font-bold text-xl mb-2">{ride.price}</p>
+                        <Button variant="outline" size="sm">
+                          <Download className="h-4 w-4 mr-2" />
+                          {t("receipt")}
+                        </Button>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <p className="font-bold text-xl mb-2">{ride.price}</p>
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        {t("receipt")}
+                    <div className="flex gap-2 pt-4 border-t">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={handleBookAgain}
+                      >
+                        {t("bookAgain")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="flex-1"
+                      >
+                        {t("support")}
                       </Button>
                     </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-4 border-t">
-                    <Button
-                      variant="outline"
-                      className="flex-1"
-                      onClick={handleBookAgain}
-                    >
-                      {t("bookAgain")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="flex-1"
-                    >
-                      {t("support")}
-                    </Button>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))
+              )}
             </TabsContent>
 
             {/* Upcoming Rides */}
             <TabsContent value="upcoming" className="space-y-4">
-              {upcomingRides.map((ride) => (
-                <Card key={ride.id} className="p-6 hover:shadow-lg transition-shadow">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold inline-block mb-3">
-                        {t("scheduled")}
-                      </div>
-                      
-                      <div className="space-y-2 mb-3">
-                        <div className="flex items-start gap-2">
-                          <div className="bg-green-500 rounded-full p-1 mt-1">
-                            <div className="w-2 h-2 bg-white rounded-full"></div>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">{t("pickupPoint")}</p>
-                            <p className="font-semibold">{ride.from}</p>
-                          </div>
+              {loading ? (
+                <Card className="p-6 text-center text-gray-500">
+                  {t("loading") || "读み込み中..."}
+                </Card>
+              ) : filteredUpcoming.length === 0 ? (
+                <Card className="p-6 text-center text-gray-500">
+                  {searchQuery ? t("noResults") || "検索結果がありません" : t("noUpcomingRides") || "予定されている乗車がありません"}
+                </Card>
+              ) : (
+                filteredUpcoming.map((ride) => (
+                  <Card key={ride.id} className="p-6 hover:shadow-lg transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold inline-block mb-3">
+                          {t("scheduled")}
                         </div>
                         
-                        <div className="flex items-start gap-2">
-                          <MapPin className="h-4 w-4 text-red-500 fill-red-500 mt-1" />
-                          <div>
-                            <p className="text-sm text-gray-600">{t("destinationPoint")}</p>
-                            <p className="font-semibold">{ride.to}</p>
+                        <div className="space-y-2 mb-3">
+                          <div className="flex items-start gap-2">
+                            <div className="bg-green-500 rounded-full p-1 mt-1">
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-600">{t("pickupPoint")}</p>
+                              <p className="font-semibold">{ride.from}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start gap-2">
+                            <MapPin className="h-4 w-4 text-red-500 fill-red-500 mt-1" />
+                            <div>
+                              <p className="text-sm text-gray-600">{t("destinationPoint")}</p>
+                              <p className="font-semibold">{ride.to}</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          <span>{ride.date}</span>
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-4 w-4" />
+                            <span>{ride.date}</span>
+                          </div>
+                          <span>{ride.time}</span>
+                          <span className="bg-gray-100 px-2 py-1 rounded">{t(ride.vehicle)}</span>
                         </div>
-                        <span>{ride.time}</span>
-                        <span className="bg-gray-100 px-2 py-1 rounded">{t(ride.vehicle)}</span>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex gap-2 pt-4 border-t">
-                    <Button
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      {t("modifyReservation")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      {t("cancel")}
-                    </Button>
-                  </div>
-                </Card>
-              ))}
+                    <div className="flex gap-2 pt-4 border-t">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        {t("modifyReservation")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        {t("cancel")}
+                      </Button>
+                    </div>
+                  </Card>
+                ))
+              )}
             </TabsContent>
           </Tabs>
         </div>
