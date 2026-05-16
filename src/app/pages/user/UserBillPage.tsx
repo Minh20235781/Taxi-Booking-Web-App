@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -9,12 +9,27 @@ import { MapPin, Calendar, CreditCard, Download, Mail, Check } from "lucide-reac
 import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft, getBookingFlowDraft } from "../../services/bookingFlow";
 import { calculateFare, formatVnd } from "../../services/pricing";
+import { api } from "../../services/api";
+import type { PaymentMethodCode } from "../../services/api";
+
+function toPaymentMethodCode(methodId?: string): PaymentMethodCode {
+  if (methodId === "momo") {
+    return "MOMO";
+  }
+  if (methodId === "cash") {
+    return "CASH";
+  }
+  return "CARD";
+}
 
 export default function UserBillPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [email, setEmail] = useState("tanaka@email.com");
   const [emailSent, setEmailSent] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<"idle" | "paid" | "error">("idle");
+  const [paymentError, setPaymentError] = useState("");
+  const hasConfirmedPayment = useRef(false);
   const draft = getBookingFlowDraft();
   const pickupText = draft.pickupText || "-";
   const destinationText = draft.destinationText || "-";
@@ -30,6 +45,27 @@ export default function UserBillPage() {
   const dateTimeText = draft.reservationDate
     ? `${new Date(draft.reservationDate).toLocaleDateString()} ${draft.reservationTime || ""}`
     : draft.reservationTime || "-";
+
+  useEffect(() => {
+    if (!draft.bookingId || hasConfirmedPayment.current) {
+      return;
+    }
+    hasConfirmedPayment.current = true;
+    api
+      .confirmBookingPayment(draft.bookingId, {
+        method: toPaymentMethodCode(draft.paymentMethodId),
+        label: draft.paymentMethodLabel,
+        amount: fare?.totalFare
+      })
+      .then(() => {
+        setPaymentStatus("paid");
+        setPaymentError("");
+      })
+      .catch((error) => {
+        setPaymentStatus("error");
+        setPaymentError(error instanceof Error ? error.message : "Could not confirm payment.");
+      });
+  }, [draft.bookingId, draft.paymentMethodId, draft.paymentMethodLabel, fare?.totalFare]);
 
   const handleBackHome = () => {
     clearBookingFlowDraft();
@@ -126,6 +162,13 @@ export default function UserBillPage() {
               <div className="flex-1">
                 <p className="text-sm text-gray-600">{t("paymentMethod")}</p>
                 <p className="font-semibold">{paymentLabel}</p>
+                <p className={`text-sm mt-1 ${paymentStatus === "error" ? "text-red-600" : "text-green-700"}`}>
+                  {paymentStatus === "paid"
+                    ? "Payment saved as PAID"
+                    : paymentStatus === "error"
+                      ? paymentError
+                      : "Confirming payment..."}
+                </p>
               </div>
             </div>
           </Card>

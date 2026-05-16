@@ -93,6 +93,49 @@ function formatMessage(message) {
   };
 }
 
+function normalizePaymentMethod(method) {
+  const normalized = String(method || "").trim().toUpperCase();
+  if (["MOMO", "CASH", "CARD"].includes(normalized)) {
+    return normalized;
+  }
+  return null;
+}
+
+function paymentMethodLabel(method, fallbackLabel) {
+  if (fallbackLabel) {
+    return String(fallbackLabel);
+  }
+  if (method === "MOMO") {
+    return "MoMo";
+  }
+  if (method === "CASH") {
+    return "Cash";
+  }
+  return "Card";
+}
+
+async function ensureRideForBooking(booking) {
+  if (booking.ride) {
+    return booking.ride;
+  }
+
+  const driverProfile = await prisma.driverProfile.findFirst({
+    where: { isOnline: true }
+  });
+
+  return prisma.ride.create({
+    data: {
+      bookingId: booking.id,
+      riderId: booking.userId,
+      driverProfileId: driverProfile?.id,
+      status: "COMPLETED",
+      startedAt: new Date(),
+      endTime: new Date(),
+      finalFare: booking.estimatedFare ?? 0
+    }
+  });
+}
+
 function getViJaTranslationPair(text) {
   const hasJapanese = /[\u3040-\u30ff\u3400-\u9fff]/u.test(text);
   return hasJapanese
@@ -432,6 +475,110 @@ app.post("/bookings/create-flow", authRequired, async (req, res) => {
             payload.routeDurationSeconds || 0
           )
         : null
+  });
+});
+
+app.patch("/bookings/:bookingId/payment-method", authRequired, async (req, res) => {
+  const bookingId = Number(req.params.bookingId);
+  const method = normalizePaymentMethod(req.body?.method);
+  if (!Number.isInteger(bookingId) || bookingId <= 0) {
+    return res.status(400).json({ message: "Invalid booking id" });
+  }
+  if (!method) {
+    return res.status(400).json({ message: "Payment method must be MOMO, CASH, or CARD" });
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId }
+  });
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+  if (booking.userId !== Number(req.auth.sub)) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const updatedBooking = await prisma.booking.update({
+    where: { id: bookingId },
+    data: {
+      paymentMethod: method,
+      paymentMethodLabel: paymentMethodLabel(method, req.body?.label)
+    }
+  });
+
+  return res.json({ booking: updatedBooking });
+});
+
+app.post("/bookings/:bookingId/confirm-payment", authRequired, async (req, res) => {
+  const bookingId = Number(req.params.bookingId);
+  if (!Number.isInteger(bookingId) || bookingId <= 0) {
+    return res.status(400).json({ message: "Invalid booking id" });
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: { ride: true }
+  });
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+  if (booking.userId !== Number(req.auth.sub)) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const method = normalizePaymentMethod(req.body?.method || booking.paymentMethod) || "CASH";
+  const label = paymentMethodLabel(method, req.body?.label || booking.paymentMethodLabel);
+  const requestedAmount = Number(req.body?.amount ?? booking.estimatedFare ?? 0);
+  const amount = Number.isFinite(requestedAmount) && requestedAmount >= 0 ? requestedAmount : 0;
+  const ride = await ensureRideForBooking(booking);
+
+  const payment = await prisma.payment.upsert({
+    where: { rideId: ride.id },
+    create: {
+      rideId: ride.id,
+      method,
+      provider: method,
+      amount,
+      currency: "VND",
+      status: "PAID",
+      externalId: method === "MOMO" ? `MOCK_MOMO_${Date.now()}` : null,
+      paidAt: new Date()
+    },
+    update: {
+      method,
+      provider: method,
+      amount,
+      currency: "VND",
+      status: "PAID",
+      externalId: method === "MOMO" ? `MOCK_MOMO_${Date.now()}` : null,
+      failureReason: null,
+      paidAt: new Date()
+    }
+  });
+
+  const [updatedBooking, updatedRide] = await Promise.all([
+    prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        paymentMethod: method,
+        paymentMethodLabel: label,
+        status: "COMPLETED"
+      }
+    }),
+    prisma.ride.update({
+      where: { id: ride.id },
+      data: {
+        status: "COMPLETED",
+        endTime: ride.endTime || new Date(),
+        finalFare: amount
+      }
+    })
+  ]);
+
+  return res.json({
+    booking: updatedBooking,
+    ride: updatedRide,
+    payment
   });
 });
 

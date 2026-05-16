@@ -18,6 +18,8 @@ export interface RideMessage {
   createdAt: string;
 }
 
+export type PaymentMethodCode = "MOMO" | "CASH" | "CARD";
+
 function getAuthToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY);
 }
@@ -125,6 +127,24 @@ export const api = {
       specialRequest?: string;
     };
   }) => request("/bookings/create-flow", { method: "POST", body: JSON.stringify(payload) }),
+
+  updateBookingPaymentMethod: (
+    bookingId: number,
+    payload: { method: PaymentMethodCode; label?: string }
+  ) =>
+    request(`/bookings/${bookingId}/payment-method`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+
+  confirmBookingPayment: (
+    bookingId: number,
+    payload: { method?: PaymentMethodCode; label?: string; amount?: number } = {}
+  ) =>
+    request(`/bookings/${bookingId}/confirm-payment`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
 
   getRideMessages: (rideId: number): Promise<{ messages: RideMessage[] }> =>
     request(`/rides/${rideId}/messages`)
