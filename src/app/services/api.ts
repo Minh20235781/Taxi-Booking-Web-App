@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 const AUTH_TOKEN_KEY = "auth_token";
 
 export interface LocationSuggestion {
@@ -6,6 +6,16 @@ export interface LocationSuggestion {
   label: string;
   lat: number;
   lon: number;
+}
+
+export interface RideMessage {
+  id: number;
+  rideId: number;
+  senderUserId: number;
+  senderRole: "USER" | "DRIVER";
+  body: string;
+  translatedBody?: string | null;
+  createdAt: string;
 }
 
 function getAuthToken() {
@@ -114,5 +124,8 @@ export const api = {
       ridePreferences?: string[];
       specialRequest?: string;
     };
-  }) => request("/bookings/create-flow", { method: "POST", body: JSON.stringify(payload) })
+  }) => request("/bookings/create-flow", { method: "POST", body: JSON.stringify(payload) }),
+
+  getRideMessages: (rideId: number): Promise<{ messages: RideMessage[] }> =>
+    request(`/rides/${rideId}/messages`)
 };
