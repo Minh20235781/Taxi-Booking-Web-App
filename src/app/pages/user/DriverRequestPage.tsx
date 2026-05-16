@@ -145,7 +145,10 @@ export default function DriverRequestPage() {
             {/* Action Buttons */}
             <div className="space-y-3">
               <Button
-                onClick={() => navigate("/user/ride")}
+                onClick={() => {
+                  clearBookingFlowDraft();
+                  navigate("/user/home");
+                }}
                 disabled={!hasLockedRoute}
                 className="w-full h-12 bg-black hover:bg-gray-800 text-white"
               >
