@@ -86,3 +86,17 @@ export function clearBookingFlowDraft() {
   sessionStorage.removeItem(BOOKING_FLOW_KEY);
   sessionStorage.removeItem(LEGACY_BOOKING_KEY);
 }
+
+/** ISO datetime for SCHEDULED bookings (reservation flow). */
+export function buildScheduledAtFromDraft(draft: BookingFlowDraft): string | undefined {
+  if (!draft.reservationDate || !draft.reservationTime) {
+    return undefined;
+  }
+  const base = new Date(draft.reservationDate);
+  if (Number.isNaN(base.getTime())) {
+    return undefined;
+  }
+  const [hours, minutes] = draft.reservationTime.split(":").map((part) => Number(part));
+  base.setHours(hours || 0, minutes || 0, 0, 0);
+  return base.toISOString();
+}

@@ -10,6 +10,12 @@ import {
 } from "./geo/providers.js";
 import { normalizeSearchInput } from "./geo/normalize.js";
 import { fetchRoutePreview } from "./geo/routing.js";
+import { calculateFareFromVehicleClass } from "./services/pricing.js";
+import {
+  buildBookingCreateData,
+  normalizeBookingPayload,
+  validateBookingPayload
+} from "./services/bookingPayload.js";
 
 const prisma = new PrismaClient();
 const app = express();
@@ -26,7 +32,9 @@ const modelMap = {
   bookings: "booking",
   rides: "ride",
   payments: "payment",
-  ratings: "rating"
+  ratings: "rating",
+  messages: "message",
+  savedPaymentMethods: "savedPaymentMethod"
 };
 
 function safeUser(user) {
@@ -155,6 +163,53 @@ app.get("/locations/suggest", async (req, res) => {
   }
 });
 
+// Member 2: POST /bookings/reserve, /payments/*
+// Member 3: /driver/*
+// Member 4: /rides/:rideId/messages + WebSocket
+
+app.post("/pricing/estimate", async (req, res) => {
+  const { vehicleClassCode, distanceMeters, durationSeconds, from, to } = req.body || {};
+  const code = String(vehicleClassCode || "").trim();
+  if (!code) {
+    return res.status(400).json({ message: "vehicleClassCode is required" });
+  }
+
+  const vehicleClass = await prisma.vehicleClass.findUnique({ where: { code } });
+  if (!vehicleClass) {
+    return res.status(404).json({ message: "Vehicle class not found" });
+  }
+
+  let distance = Number(distanceMeters);
+  let duration = Number(durationSeconds);
+
+  if (from?.lat != null && from?.lon != null && to?.lat != null && to?.lon != null) {
+    try {
+      const route = await fetchRoutePreview({
+        from: { lat: Number(from.lat), lon: Number(from.lon) },
+        to: { lat: Number(to.lat), lon: Number(to.lon) }
+      });
+      distance = route.distance;
+      duration = route.duration;
+    } catch {
+      return res.status(404).json({ message: "Could not fetch route for fare estimate" });
+    }
+  }
+
+  if (
+    !Number.isFinite(distance) ||
+    !Number.isFinite(duration) ||
+    distance < 0 ||
+    duration < 0
+  ) {
+    return res.status(400).json({
+      message: "Provide distanceMeters and durationSeconds, or valid from/to coordinates"
+    });
+  }
+
+  const fare = calculateFareFromVehicleClass(vehicleClass, distance, duration);
+  return res.json({ fare });
+});
+
 app.post("/routes/preview", async (req, res) => {
   const { from, to } = req.body || {};
   const fromLat = Number(from?.lat);
@@ -181,26 +236,61 @@ app.post("/routes/preview", async (req, res) => {
 });
 
 app.post("/bookings/create-flow", authRequired, async (req, res) => {
-  const { pickupAddress, destination, vehicleClassCode } = req.body;
-  if (!pickupAddress || !destination || !vehicleClassCode) {
-    return res.status(400).json({ message: "Missing booking flow fields" });
+  let payload;
+  try {
+    payload = normalizeBookingPayload(req.body);
+  } catch (error) {
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : "Invalid booking payload"
+    });
   }
 
-  const vehicleClass = await prisma.vehicleClass.findUnique({ where: { code: vehicleClassCode } });
+  const validationError = validateBookingPayload(payload);
+  if (validationError) {
+    return res.status(400).json({ message: validationError });
+  }
+
+  const vehicleClass = await prisma.vehicleClass.findUnique({
+    where: { code: payload.vehicleClassCode }
+  });
   if (!vehicleClass) {
     return res.status(404).json({ message: "Vehicle class not found" });
   }
 
+  let estimatedFare = payload.estimatedFare;
+  if (
+    estimatedFare == null &&
+    payload.routeDistanceMeters != null &&
+    payload.routeDurationSeconds != null
+  ) {
+    estimatedFare = calculateFareFromVehicleClass(
+      vehicleClass,
+      payload.routeDistanceMeters,
+      payload.routeDurationSeconds
+    ).totalFare;
+  }
+
   const booking = await prisma.booking.create({
-    data: {
-      userId: Number(req.auth.sub),
-      pickupAddress,
-      destination,
-      vehicleClassId: vehicleClass.id
-    }
+    data: buildBookingCreateData(
+      Number(req.auth.sub),
+      vehicleClass.id,
+      payload,
+      estimatedFare ?? null
+    ),
+    include: { vehicleClass: true }
   });
 
-  return res.status(201).json({ booking });
+  return res.status(201).json({
+    booking,
+    fare:
+      estimatedFare != null
+        ? calculateFareFromVehicleClass(
+            vehicleClass,
+            payload.routeDistanceMeters || 0,
+            payload.routeDurationSeconds || 0
+          )
+        : null
+  });
 });
 
 Object.entries(modelMap).forEach(([routeName, modelName]) => {
