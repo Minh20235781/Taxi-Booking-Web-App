@@ -13,7 +13,7 @@ import {
 import { Car, ArrowLeft, Upload, Globe } from "lucide-react";
 import { Checkbox } from "../../components/ui/checkbox";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { api } from "../../services/api";
+import { api, setAuthToken } from "../../services/api";
 
 export default function DriverRegistration() {
   const navigate = useNavigate();
@@ -53,20 +53,59 @@ export default function DriverRegistration() {
   const handleSubmit = async () => {
     try {
       const langs: string[] = [];
-      if (languages.japanese) langs.push("ja");
-      if (languages.english) langs.push("en");
-      if (languages.vietnamese) langs.push("vi");
+      if (languages.japanese) langs.push("japanese");
+      if (languages.english) langs.push("english");
+      if (languages.vietnamese) langs.push("vietnamese");
+
+      const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+
+      // If user not authenticated yet, create account for driver
+      let token: string | undefined;
+      try {
+        const signupRes: any = await api.signup({
+          fullName,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+          role: "DRIVER"
+        });
+        token = signupRes?.token || signupRes?.data?.token || signupRes?.token;
+      } catch (e) {
+        // If signup fails because user exists, try login
+        try {
+          const loginRes: any = await api.login({ email: formData.email, password: formData.password, role: "DRIVER" });
+          token = loginRes?.token || loginRes?.data?.token;
+        } catch (err) {
+          throw err;
+        }
+      }
+
+      if (token) {
+        setAuthToken(token);
+      }
 
       const payload = {
-        ...formData,
-        languages: langs.join(","),
+        user: {
+          fullName,
+          email: formData.email,
+          phone: formData.phone
+        },
+        licenseNumber: formData.licenseNumber,
+        vehicleModel: formData.vehicleModel,
+        vehiclePlate: formData.vehiclePlate,
+        vehicleYear: formData.vehicleYear,
+        vehicleColor: formData.vehicleColor,
+        identificationNumber: formData.identificationNumber,
+        bankName: formData.bankName,
+        accountNumber: formData.accountNumber,
+        accountHolderName: formData.accountHolderName,
+        languages: JSON.stringify(langs)
       };
 
       await api.updateDriverProfile(payload as any);
-      
+
       const me = await api.me();
       localStorage.setItem("user", JSON.stringify(me));
-
       navigate("/driver/home");
     } catch (error) {
       console.error(error);

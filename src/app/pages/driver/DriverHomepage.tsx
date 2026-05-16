@@ -82,6 +82,8 @@ export default function DriverHomepage() {
   };
 
   const handleDecline = (bookingId: number) => {
+    // Persist decline to backend so this driver won't see the request again
+    api.declineRide(bookingId).catch((err) => console.error("Decline failed:", err));
     setDeclinedRides((prev) => [...prev, bookingId]);
   };
 

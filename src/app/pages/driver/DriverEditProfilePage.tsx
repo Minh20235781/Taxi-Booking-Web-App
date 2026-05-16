@@ -8,21 +8,21 @@ import { Label } from "../../components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Camera, ArrowLeft, Upload, X } from "lucide-react";
+import { Camera, ArrowLeft, Upload, X, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
 import { useLanguage } from "../../contexts/LanguageContext";
 
 export default function DriverEditProfilePage() {
   const navigate = useNavigate();
-  const { t } = useLanguage(); // Sử dụng hook chuyển ngữ để hỗ trợ đa ngôn ngữ (EN / JA / VI)
+  const { t } = useLanguage(); 
   const [loading, setLoading] = useState(true);
   
-  // Ref điều khiển thẻ input file ẩn
+  // Refs cho các thẻ input file ẩn
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const vehiclePhotoInputRef = useRef<HTMLInputElement>(null);
 
-  // Khởi tạo trạng thái dữ liệu trống ban đầu
+  // State quản lý thông tin profile
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -36,10 +36,23 @@ export default function DriverEditProfilePage() {
     vehicleYear: "",
     vehicleColor: "white",
     avatarUrl: "",
+    vehiclePhotoUrl: "",
   });
 
-  // Quản lý ảnh xe cục bộ (vì chưa có trường cụ thể trong Prisma nhưng cần nâng cấp UI/UX xem trước)
+  // State quản lý chuỗi ảnh xe Base64
   const [vehiclePhotoUrl, setVehiclePhotoUrl] = useState<string>("");
+
+  // State quản lý riêng cho việc đổi mật khẩu công khai/ẩn
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  // State quản lý ẩn/hiện mắt cho từng trường mật khẩu
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [languages, setLanguages] = useState({
     japanese: false,
@@ -54,9 +67,9 @@ export default function DriverEditProfilePage() {
         const data = response.data || response;
         if (data) {
           const user = data.user || {};
-          const driverProfile = data.driverProfile || {};
+          const driverProfile = data;
 
-          // Phân tách fullName thành firstName & lastName an toàn để điền vào các trường Input
+          // Tách fullName thành firstName & lastName
           const names = user.fullName ? user.fullName.trim().split(" ") : ["", ""];
           let fName = "";
           let lName = "";
@@ -78,11 +91,12 @@ export default function DriverEditProfilePage() {
             vehicleModel: driverProfile.vehicleModel || "",
             vehiclePlate: driverProfile.vehiclePlate || "",
             vehicleYear: driverProfile.vehicleYear || "",
-            vehicleColor: driverProfile.vehicleColor || "white",
+            vehicleColor: driverProfile.vehicleColor || "",
+            vehiclePhotoUrl: driverProfile.vehiclePhotoUrl || "",
             avatarUrl: user.avatarUrl || "",
           });
+          setVehiclePhotoUrl(driverProfile.vehiclePhotoUrl || "");
 
-          // Giải mã chuỗi ngôn ngữ từ DB (Ví dụ: "japanese,english") thành các trạng thái checkbox Boolean
           const langString = driverProfile.languages || "";
           setLanguages({
             japanese: langString.toLowerCase().includes("japanese"),
@@ -107,58 +121,76 @@ export default function DriverEditProfilePage() {
     });
   };
 
-  // Hàm xử lý kiểm tra file và tạo link blob URL để xem trước ảnh (Avatar)
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPasswordData({
+      ...passwordData,
+      [e.target.id]: e.target.value,
+    });
+  };
+
+  // Convert ảnh Avatar sang Base64
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Kiểm tra định dạng hợp lệ (JPG, PNG)
     if (!["image/jpeg", "image/png"].includes(file.type)) {
-      toast.error(t("invalidImageType") || "JPGまたはPNG形式 của ảnh không hợp lệ");
+      toast.error(t("invalidImageType") || "JPG/PNG形式のみ対応しています");
       return;
     }
 
-    // Kiểm tra dung lượng tối đa 5MB (5 * 1024 * 1024 bytes)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error(t("fileTooLarge") || "ファイルサイズは tối đa 5MB までです");
+      toast.error(t("fileTooLarge") || "ファイルサイズは最大5MBまでです");
       return;
     }
 
-    const localPreviewUrl = URL.createObjectURL(file);
-    setFormData((prev) => ({ ...prev, avatarUrl: localPreviewUrl }));
-    toast.success(t("avatarSelected") || "アバターが選択されました");
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormData((prev) => ({ ...prev, avatarUrl: reader.result as string }));
+      toast.success(t("avatarSelected") || "アバターが選択されました");
+    };
+    reader.readAsDataURL(file);
   };
 
-  // Hàm xử lý kiểm tra file và tạo link blob URL để xem trước ảnh (Ảnh xe)
+  // Convert ảnh xe sang Base64
   const handleVehicleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!["image/jpeg", "image/png"].includes(file.type)) {
-      toast.error(t("invalidImageType") || "JPGまたはPNG形式 của ảnh không hợp lệ");
+      toast.error(t("invalidImageType") || "JPG/PNG形式のみ対応しています");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      toast.error(t("fileTooLarge") || "ファイルサイズは tối đa 5MB までです");
+      toast.error(t("fileTooLarge") || "ファイルサイズは最大5MBまでです");
       return;
     }
 
-    const localPreviewUrl = URL.createObjectURL(file);
-    setVehiclePhotoUrl(localPreviewUrl);
-    toast.success(t("vehiclePhotoSelected") || "車両写真が選択されました");
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      setFormData((prev) => ({ ...prev, vehiclePhotoUrl: result }));
+      setVehiclePhotoUrl(result);
+      toast.success(t("vehiclePhotoSelected") || "車両写真が選択されました");
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSave = async () => {
-    try {
-      // Gộp các Checkbox ngôn ngữ được tích chọn thành chuỗi phân tách bởi dấu phẩy để lưu vào cột String DB
-      const selectedLanguages = Object.keys(languages)
-        .filter((key) => languages[key as keyof typeof languages])
-        .join(",");
+    // Kiểm tra dữ liệu bắt buộc đầu vào
+    if (!formData.firstName.trim() || !formData.lastName.trim() || !formData.email.trim() || !formData.phone.trim()) {
+      toast.error(t("fillRequiredFields") || "必須項目(*)を入力してください");
+      return;
+    }
 
-      const payload = {
-        ...formData,
-        languages: selectedLanguages,
+    try {
+      const selectedLanguageKeys = Object.keys(languages).filter(
+        (key) => languages[key as keyof typeof languages]
+      );
+
+      // Chuẩn hóa cấu trúc Payload: backend expects driver fields at the root
+      // and `languages` stored as a JSON string for compatibility with seed data.
+      const payload: any = {
         user: {
           fullName: `${formData.firstName} ${formData.lastName}`.trim(),
           phone: formData.phone,
@@ -168,20 +200,35 @@ export default function DriverEditProfilePage() {
           country: formData.country,
           avatarUrl: formData.avatarUrl,
         },
-        driverProfile: {
-          vehicleModel: formData.vehicleModel,
-          vehiclePlate: formData.vehiclePlate,
-          vehicleYear: formData.vehicleYear,
-          vehicleColor: formData.vehicleColor,
-          languages: selectedLanguages,
-        },
+        // Flatten driver fields to top-level keys expected by the backend
+        vehicleModel: formData.vehicleModel,
+        vehiclePlate: formData.vehiclePlate,
+        vehicleYear: formData.vehicleYear,
+        vehicleColor: formData.vehicleColor,
+        vehiclePhotoUrl: formData.vehiclePhotoUrl,
+        languages: JSON.stringify(selectedLanguageKeys),
       };
+
+      // Chỉ đính kèm mật khẩu vào payload khi người dùng có thao tác nhập để tránh lỗi trống dữ liệu ở Backend
+      if (passwordData.currentPassword || passwordData.newPassword || passwordData.confirmPassword) {
+        if (!passwordData.currentPassword) {
+          toast.error(t("pleaseEnterCurrentPassword") || "現在の mật khẩu を入力してください");
+          return;
+        }
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+          toast.error(t("passwordsDoNotMatch") || "新しいパスワードが一致しません");
+          return;
+        }
+        payload.currentPassword = passwordData.currentPassword;
+        payload.newPassword = passwordData.newPassword;
+      }
 
       await api.updateDriverProfile(payload);
       toast.success(t("profileUpdatedSuccess") || "プロフィールが更新されました");
       navigate("/driver/profile");
-    } catch (error) {
-      toast.error(t("profileUpdatedFailed") || "プロフィールの更新に失敗しました");
+    } catch (error: any) {
+      // Hiển thị trực tiếp thông báo lỗi cụ thể từ API (ví dụ: Sai mật khẩu cũ, hoặc ảnh quá dung lượng xử lý của server)
+      toast.error(error?.message || t("profileUpdatedFailed") || "プロフィールの更新に失敗しました");
       console.error(error);
     }
   };
@@ -235,7 +282,6 @@ export default function DriverEditProfilePage() {
                 </button>
               </div>
               <div>
-                {/* Input File ẩn dành cho Avatar */}
                 <input 
                   type="file" 
                   ref={avatarInputRef}
@@ -245,9 +291,9 @@ export default function DriverEditProfilePage() {
                 />
                 <Button variant="outline" className="mb-2 gap-2" onClick={() => avatarInputRef.current?.click()}>
                   <Upload className="h-4 w-4" />
-                  {t("Upload Image") || "写真をアップロード"}
+                  {t("uploadAvatar") || "写真をアップロード"}
                 </Button>
-                <p className="text-sm text-gray-600">{t("JPG, PNG, maximum 5MB") || "JPG、PNG、最大5MB"}</p>
+                <p className="text-sm text-gray-600">{t("uploadRequirements") || "JPG、PNG、最大5MB"}</p>
               </div>
             </div>
           </Card>
@@ -258,7 +304,9 @@ export default function DriverEditProfilePage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">{t("firstName") || "名"}</Label>
+                  <Label htmlFor="firstName">
+                    {t("firstName") || "名"} <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="firstName"
                     value={formData.firstName}
@@ -266,7 +314,9 @@ export default function DriverEditProfilePage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">{t("lastName") || "姓"}</Label>
+                  <Label htmlFor="lastName">
+                    {t("lastName") || "姓"} <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="lastName"
                     value={formData.lastName}
@@ -276,7 +326,9 @@ export default function DriverEditProfilePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">{t("email") || "メールアドレス"}</Label>
+                <Label htmlFor="email">
+                  {t("email") || "メールアドレス"} <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="email"
                   type="email"
@@ -286,7 +338,9 @@ export default function DriverEditProfilePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone">{t("phone") || "電話番号"}</Label>
+                <Label htmlFor="phone">
+                  {t("phone") || "電話番号"} <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   id="phone"
                   type="tel"
@@ -382,7 +436,7 @@ export default function DriverEditProfilePage() {
                 </Select>
               </div>
 
-              {/* Nâng cấp khu vực Upload ảnh xe có tính năng xem trước hình ảnh */}
+              {/* Upload ảnh xe nâng cấp có xem trước hình ảnh */}
               <div className="space-y-2">
                 <Label>{t("vehiclePhoto") || "車両写真"}</Label>
                 <input 
@@ -462,35 +516,71 @@ export default function DriverEditProfilePage() {
             </div>
           </Card>
 
-          {/* Password Change */}
+          {/* Password Change nâng cấp mắt thần */}
           <Card className="p-6 mb-6">
             <h3 className="font-semibold mb-4">{t("changePassword") || "パスワード変更"}</h3>
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="currentPassword">{t("currentPassword") || "現在のパスワード"}</Label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  placeholder={t("placeholderCurrentPassword") || "現在のパスワードを入力"}
-                />
+                <div className="relative">
+                  <Input
+                    id="currentPassword"
+                    type={showCurrentPassword ? "text" : "password"}
+                    value={passwordData.currentPassword}
+                    onChange={handlePasswordChange}
+                    className="pr-10"
+                    placeholder={t("placeholderCurrentPassword") || "現在のパスワードを入力"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="newPassword">{t("newPassword") || "新しいパスワード"}</Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  placeholder={t("placeholderNewPassword") || "新しいパスワードを入力"}
-                />
+                <div className="relative">
+                  <Input
+                    id="newPassword"
+                    type={showNewPassword ? "text" : "password"}
+                    value={passwordData.newPassword}
+                    onChange={handlePasswordChange}
+                    className="pr-10"
+                    placeholder={t("placeholderNewPassword") || "新しいパスワードを入力"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">{t("confirmPassword") || "パスワード確認"}</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder={t("placeholderConfirmPassword") || "パスワードを再入力"}
-                />
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={passwordData.confirmPassword}
+                    onChange={handlePasswordChange}
+                    className="pr-10"
+                    placeholder={t("placeholderConfirmPassword") || "パスワードを再入力"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
             </div>
           </Card>
