@@ -120,4 +120,8 @@ export const api = {
   updateDriverProfile: (payload: any) => request("/driver/profile", { method: "PUT", body: JSON.stringify(payload) }),
   getPendingRequests: () => request("/driver/pending-requests"),
   acceptRide: (bookingId: number) => request(`/driver/accept-ride/${bookingId}`, { method: "POST" }),
-};
+  declineRide: (bookingId: number) => request(`/driver/decline-ride/${bookingId}`, { method: "POST" }),
+  getBookingWithRide: (bookingId: number) => request(`/bookings/with-ride/${bookingId}`),
+  getDriverAcceptedRides: () => request(`/driver/accepted-rides`),
+  getRecentBookings: () => request(`/bookings/my-recent`),  getCompletedRides: () => request(`/bookings/my-completed`),
+  getUpcomingRides: () => request(`/bookings/my-upcoming`),};
