@@ -152,6 +152,9 @@ const formatEarnings = (value: any) => {
                   <h3 className="font-bold text-lg mb-2">
                     {t("newRideRequest")}
                   </h3>
+                  <p className="inline-flex items-center rounded-full bg-white/80 px-2 py-1 text-xs font-semibold text-green-700 border border-green-200 mb-2">
+                    {request.bookingType === "SCHEDULED" ? "Scheduled Request" : "Instant Request"}
+                  </p>
                   <p className="text-gray-600 mb-1">
                     {t("pickup")}: {request.pickupAddress}
                   </p>
@@ -161,6 +164,11 @@ const formatEarnings = (value: any) => {
                   <p className="font-semibold mt-2">
                     {t("estimatedEarnings")}: {request.estimatedFare?.toLocaleString() || 0} VND
                   </p>
+                  {request.scheduledAt ? (
+                    <p className="text-gray-600 mt-1">
+                      Scheduled for: {new Date(request.scheduledAt).toLocaleString()}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex gap-4">
                   <Button
