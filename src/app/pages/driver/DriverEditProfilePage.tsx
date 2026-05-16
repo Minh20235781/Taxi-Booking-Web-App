@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -10,6 +10,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Camera, ArrowLeft, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "../../services/api";
 
 export default function DriverEditProfilePage() {
   const navigate = useNavigate();
@@ -33,6 +34,31 @@ export default function DriverEditProfilePage() {
     vietnamese: true,
   });
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const response = await api.getDriverProfile();
+        const data = response.data;
+        if (data) {
+          const names = data.user?.fullName?.split(" ") || ["", ""];
+          setFormData({
+            ...formData,
+            firstName: names[0] || "",
+            lastName: names.slice(1).join(" ") || "",
+            email: data.user?.email || formData.email,
+            phone: data.user?.phone || formData.phone,
+            vehicleModel: data.driverProfile?.vehicleModel || formData.vehicleModel,
+            vehiclePlate: data.driverProfile?.vehiclePlate || formData.vehiclePlate,
+            vehicleColor: data.driverProfile?.vehicleColor || formData.vehicleColor,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch driver profile:", error);
+      }
+    };
+    fetchProfile();
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
@@ -40,9 +66,21 @@ export default function DriverEditProfilePage() {
     });
   };
 
-  const handleSave = () => {
-    toast.success("プロフィールが更新されました");
-    navigate("/driver/profile");
+  const handleSave = async () => {
+    try {
+      await api.updateDriverProfile({
+        ...formData,
+        user: {
+          fullName: `${formData.firstName} ${formData.lastName}`.trim(),
+          phone: formData.phone,
+        }
+      });
+      toast.success("プロフィールが更新されました");
+      navigate("/driver/profile");
+    } catch (error) {
+      toast.error("プロフィールの更新に失敗しました");
+      console.error(error);
+    }
   };
 
   return (

@@ -114,5 +114,10 @@ export const api = {
       ridePreferences?: string[];
       specialRequest?: string;
     };
-  }) => request("/bookings/create-flow", { method: "POST", body: JSON.stringify(payload) })
+  }) => request("/bookings/create-flow", { method: "POST", body: JSON.stringify(payload) }),
+
+  getDriverProfile: () => request("/driver/profile"),
+  updateDriverProfile: (payload: any) => request("/driver/profile", { method: "PUT", body: JSON.stringify(payload) }),
+  getPendingRequests: () => request("/driver/pending-requests"),
+  acceptRide: (bookingId: number) => request(`/driver/accept-ride/${bookingId}`, { method: "POST" }),
 };

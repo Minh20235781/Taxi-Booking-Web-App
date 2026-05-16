@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -14,11 +14,66 @@ import {
   Wallet,
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 export default function DriverHomepage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [isOnline, setIsOnline] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [declinedRides, setDeclinedRides] = useState<number[]>([]);
+
+  useEffect(() => {
+    api.getDriverProfile()
+      .then((data) => setIsOnline(!!data?.isOnline))
+      .catch(console.error);
+  }, []);
+
+  const handleToggleOnline = async (checked: boolean) => {
+    setIsOnline(checked);
+    if (!checked) setPendingRequests([]);
+    try {
+      await api.updateDriverProfile({ isOnline: checked });
+    } catch (error) {
+      console.error(error);
+      setIsOnline(!checked);
+    }
+  };
+
+  useEffect(() => {
+    let interval: number;
+    if (isOnline) {
+      const fetchRequests = async () => {
+        try {
+          const data = await api.getPendingRequests();
+          if (Array.isArray(data)) {
+            setPendingRequests(data);
+          } else if (data && Array.isArray(data.requests)) {
+            setPendingRequests(data.requests);
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      };
+      fetchRequests();
+      interval = window.setInterval(fetchRequests, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [isOnline]);
+
+  const handleAcceptRide = async (bookingId: number) => {
+    try {
+      await api.acceptRide(bookingId);
+      navigate("/driver/ride-accept");
+    } catch (error) {
+      console.error(error);
+      alert("Failed to accept ride. It might have been taken or canceled.");
+    }
+  };
+
+  const handleDecline = (bookingId: number) => {
+    setDeclinedRides((prev) => [...prev, bookingId]);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -45,42 +100,49 @@ export default function DriverHomepage() {
                 </span>
                 <Switch
                   checked={isOnline}
-                  onCheckedChange={setIsOnline}
+                  onCheckedChange={handleToggleOnline}
                   className="scale-150"
                 />
               </div>
             </div>
           </Card>
 
-          {/* New Ride Request */}
-          {isOnline && (
-            <Card className="p-6 mb-6 bg-green-50 border-green-200 animate-pulse">
+          {/* New Ride Requests */}
+          {isOnline && pendingRequests.filter(req => !declinedRides.includes(req.id)).map(request => (
+            <Card key={request.id} className="p-6 mb-6 bg-green-50 border-green-200 animate-pulse">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-lg mb-2">
                     {t("newRideRequest")}
                   </h3>
                   <p className="text-gray-600 mb-1">
-                    {t("pickup")}: Tran Hung Dao St
+                    {t("pickup")}: {request.pickupAddress}
                   </p>
                   <p className="text-gray-600">
-                    {t("destination")}: Noi Bai Airport
+                    {t("destination")}: {request.destination}
                   </p>
                   <p className="font-semibold mt-2">
-                    {t("estimatedEarnings")}: 350,000 VND
+                    {t("estimatedEarnings")}: {request.estimatedFare?.toLocaleString() || 0} VND
                   </p>
                 </div>
-                <Button
-                  onClick={() =>
-                    navigate("/driver/ride-accept")
-                  }
-                  className="bg-green-600 hover:bg-green-700 text-white h-12 px-8"
-                >
-                  {t("acceptRequest")}
-                </Button>
+                <div className="flex gap-4">
+                  <Button
+                    onClick={() => handleDecline(request.id)}
+                    variant="outline"
+                    className="h-12 px-8"
+                  >
+                    {t("decline")}
+                  </Button>
+                  <Button
+                    onClick={() => handleAcceptRide(request.id)}
+                    className="bg-green-600 hover:bg-green-700 text-white h-12 px-8"
+                  >
+                    {t("acceptRequest")}
+                  </Button>
+                </div>
               </div>
             </Card>
-          )}
+          ))}
 
           {/* Split Layout: Left (Stats) + Right (Quick Actions) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

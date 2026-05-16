@@ -293,6 +293,128 @@ app.post("/bookings/create-flow", authRequired, async (req, res) => {
   });
 });
 
+app.put("/driver/profile", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const data = req.body;
+
+  try {
+    const driverProfile = await prisma.driverProfile.update({
+      where: { userId },
+      data: {
+        licenseNumber: data.licenseNumber,
+        vehiclePlate: data.vehiclePlate,
+        vehicleModel: data.vehicleModel,
+        vehicleYear: data.vehicleYear,
+        vehicleColor: data.vehicleColor,
+        identificationNumber: data.identificationNumber,
+        languages: data.languages,
+        bankName: data.bankName,
+        accountNumber: data.accountNumber,
+        accountHolderName: data.accountHolderName,
+        isOnline: data.isOnline
+      }
+    });
+
+    if (data.user) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          name: data.user.name,
+          email: data.user.email,
+          phone: data.user.phone,
+          avatarUrl: data.user.avatarUrl
+        }
+      });
+    }
+
+    res.json({ message: "Profile updated successfully.", driverProfile });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+    console.error("Error updating driver profile:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+app.get("/driver/profile", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  try {
+    const driverProfile = await prisma.driverProfile.findUnique({
+      where: { userId },
+      include: { user: true }
+    });
+
+    if (!driverProfile) {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+    res.json(driverProfile);
+  } catch (error) {
+    console.error("Error fetching driver profile:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+app.get("/driver/pending-requests", authRequired, async (req, res) => {
+  try {
+    const bookings = await prisma.booking.findMany({
+      where: { status: "REQUESTED" },
+      include: { user: true, vehicleClass: true }
+    });
+    res.json(bookings);
+  } catch (error) {
+    console.error("Error fetching pending requests:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+app.post("/driver/accept-ride/:bookingId", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const bookingId = Number(req.params.bookingId);
+
+  try {
+    const driverProfile = await prisma.driverProfile.findUnique({
+      where: { userId }
+    });
+    
+    if (!driverProfile) {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (booking.status !== "REQUESTED") {
+      return res.status(400).json({ message: "Booking is no longer available." });
+    }
+
+    const updatedBooking = await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: "ACCEPTED" }
+    });
+
+    const ride = await prisma.ride.create({
+      data: {
+        bookingId,
+        riderId: booking.userId,
+        driverProfileId: driverProfile.id,
+        status: "ACCEPTED",
+        acceptedAt: new Date()
+      }
+    });
+
+    res.json({ message: "Ride accepted successfully.", booking: updatedBooking, ride });
+  } catch (error) {
+    console.error("Error accepting ride:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 Object.entries(modelMap).forEach(([routeName, modelName]) => {
   app.get(`/crud/${routeName}`, authRequired, async (_req, res) => {
     const data = await prisma[modelName].findMany();

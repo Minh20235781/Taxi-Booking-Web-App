@@ -13,6 +13,7 @@ import {
 import { Car, ArrowLeft, Upload, Globe } from "lucide-react";
 import { Checkbox } from "../../components/ui/checkbox";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 export default function DriverRegistration() {
   const navigate = useNavigate();
@@ -49,9 +50,28 @@ export default function DriverRegistration() {
     });
   };
 
-  const handleSubmit = () => {
-    // Mock registration
-    navigate("/driver/home");
+  const handleSubmit = async () => {
+    try {
+      const langs: string[] = [];
+      if (languages.japanese) langs.push("ja");
+      if (languages.english) langs.push("en");
+      if (languages.vietnamese) langs.push("vi");
+
+      const payload = {
+        ...formData,
+        languages: langs.join(","),
+      };
+
+      await api.updateDriverProfile(payload as any);
+      
+      const me = await api.me();
+      localStorage.setItem("user", JSON.stringify(me));
+
+      navigate("/driver/home");
+    } catch (error) {
+      console.error(error);
+      alert("Registration failed. Please try again.");
+    }
   };
 
   return (
@@ -86,7 +106,7 @@ export default function DriverRegistration() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white z-50">
-              <SelectItem value="ja">日本語</SelectItem>
+              <SelectItem value="ja">???</SelectItem>
               <SelectItem value="en">English</SelectItem>
             </SelectContent>
           </Select>
@@ -105,9 +125,9 @@ export default function DriverRegistration() {
             </p>
           </div>
 
-          <div className="space-y-6">
-            {/* Bank Account Information (Replaces Personal Information) */}
-            <div className="bg-gray-50 p-6 rounded-lg">
+          <div className="space-y-8">
+            {/* Bank Account Information */}
+            <div>
               <h3 className="font-bold text-lg mb-4">
                 {t("bankAccountInformation")}
               </h3>
@@ -119,6 +139,7 @@ export default function DriverRegistration() {
                   <Input
                     id="bankName"
                     placeholder="Vietcombank"
+                    className="bg-gray-100 border-none h-12"
                     value={formData.bankName}
                     onChange={handleChange}
                   />
@@ -131,6 +152,7 @@ export default function DriverRegistration() {
                   <Input
                     id="accountNumber"
                     placeholder="1234567890"
+                    className="bg-gray-100 border-none h-12"
                     value={formData.accountNumber}
                     onChange={handleChange}
                   />
@@ -143,6 +165,7 @@ export default function DriverRegistration() {
                   <Input
                     id="accountHolderName"
                     placeholder="NGUYEN VAN A"
+                    className="bg-gray-100 border-none h-12"
                     value={formData.accountHolderName}
                     onChange={handleChange}
                   />
@@ -150,8 +173,8 @@ export default function DriverRegistration() {
               </div>
             </div>
 
-            {/* Identification Information (Replaces Insurance Information) */}
-            <div className="bg-gray-50 p-6 rounded-lg">
+            {/* Identification Information */}
+            <div>
               <h3 className="font-bold text-lg mb-4">
                 {t("identificationInformation")}
               </h3>
@@ -163,6 +186,7 @@ export default function DriverRegistration() {
                   <Input
                     id="identificationNumber"
                     placeholder="123456789012"
+                    className="bg-gray-100 border-none h-12"
                     value={formData.identificationNumber}
                     onChange={handleChange}
                   />
@@ -171,7 +195,7 @@ export default function DriverRegistration() {
                 {/* ID Card Front */}
                 <div className="space-y-2">
                   <Label>{t("idCardFront")}</Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer">
+                  <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50">
                     <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm text-gray-600">
                       {t("clickToUpload")}
@@ -182,7 +206,7 @@ export default function DriverRegistration() {
                 {/* ID Card Back */}
                 <div className="space-y-2">
                   <Label>{t("idCardBack")}</Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer">
+                  <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50">
                     <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm text-gray-600">
                       {t("clickToUpload")}
@@ -193,7 +217,7 @@ export default function DriverRegistration() {
             </div>
 
             {/* Driver License */}
-            <div className="bg-gray-50 p-6 rounded-lg">
+            <div>
               <h3 className="font-bold text-lg mb-4">
                 {t("driversLicense")}
               </h3>
@@ -205,13 +229,14 @@ export default function DriverRegistration() {
                   <Input
                     id="licenseNumber"
                     placeholder="123456789"
+                    className="bg-gray-100 border-none h-12"
                     value={formData.licenseNumber}
                     onChange={handleChange}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>{t("licensePhoto")}</Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer">
+                  <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50">
                     <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm text-gray-600">
                       {t("clickToUpload")}
@@ -222,7 +247,7 @@ export default function DriverRegistration() {
             </div>
 
             {/* Vehicle Information */}
-            <div className="bg-gray-50 p-6 rounded-lg">
+            <div>
               <h3 className="font-bold text-lg mb-4">
                 {t("vehicleInfo")}
               </h3>
@@ -234,6 +259,7 @@ export default function DriverRegistration() {
                   <Input
                     id="vehicleModel"
                     placeholder="Toyota Vios"
+                    className="bg-gray-100 border-none h-12"
                     value={formData.vehicleModel}
                     onChange={handleChange}
                   />
@@ -247,6 +273,7 @@ export default function DriverRegistration() {
                     <Input
                       id="vehiclePlate"
                       placeholder="30A-12345"
+                      className="bg-gray-100 border-none h-12"
                       value={formData.vehiclePlate}
                       onChange={handleChange}
                     />
@@ -258,6 +285,7 @@ export default function DriverRegistration() {
                     <Input
                       id="vehicleYear"
                       placeholder="2022"
+                      className="bg-gray-100 border-none h-12"
                       value={formData.vehicleYear}
                       onChange={handleChange}
                     />
@@ -269,7 +297,7 @@ export default function DriverRegistration() {
                     {t("vehicleColor")}
                   </Label>
                   <Select>
-                    <SelectTrigger>
+                    <SelectTrigger className="bg-gray-100 border-none h-12">
                       <SelectValue
                         placeholder={t("selectColor")}
                       />
@@ -296,7 +324,7 @@ export default function DriverRegistration() {
 
                 <div className="space-y-2">
                   <Label>{t("vehiclePhoto")}</Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer">
+                  <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50">
                     <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm text-gray-600">
                       {t("clickToUpload")}
@@ -307,7 +335,7 @@ export default function DriverRegistration() {
             </div>
 
             {/* Language Skills */}
-            <div className="bg-gray-50 p-6 rounded-lg">
+            <div>
               <h3 className="font-bold text-lg mb-4">
                 {t("languageSkills")}
               </h3>
@@ -372,7 +400,7 @@ export default function DriverRegistration() {
                 {/* Language Certification Upload */}
                 <div className="space-y-2 pt-2">
                   <Label>{t("languageCertification")}</Label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer">
+                  <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50">
                     <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm text-gray-600">
                       {t("clickToUpload")}
@@ -387,7 +415,7 @@ export default function DriverRegistration() {
 
             <Button
               onClick={handleSubmit}
-              className="w-full h-12 bg-black hover:bg-gray-800 text-white"
+              className="w-full h-12 bg-black hover:bg-gray-800 text-white mt-4"
             >
               {t("completeRegistration")}
             </Button>
