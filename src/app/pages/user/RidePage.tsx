@@ -13,6 +13,42 @@ import type { LocationSuggestion } from "../../services/api";
 import { calculateFare, formatVnd } from "../../services/pricing";
 import { api } from "../../services/api";
 
+const LANGUAGE_LABELS: Record<string, string> = {
+  japanese: "Japanese",
+  english: "English",
+  vietnamese: "Vietnamese"
+};
+
+function parseLanguageList(value: unknown) {
+  if (!value) return [] as string[];
+
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+      }
+    } catch {
+      // ignore JSON parse failures and fall back to comma-separated parsing
+    }
+
+    return value
+      .split(",")
+      .map((item) => String(item).trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  return [] as string[];
+}
+
+function getLanguageDisplayName(code: string) {
+  return LANGUAGE_LABELS[code] || code;
+}
+
 export default function RidePage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -46,6 +82,25 @@ export default function RidePage() {
     clearBookingFlowDraft();
     navigate("/user/home");
   };
+
+  const driverAvatarUrl = bookingWithRide?.ride?.driver?.user?.avatarUrl || "";
+  const driverName = bookingWithRide?.ride?.driver?.user?.fullName || "--";
+  const driverInitials = driverName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part: string) => part[0])
+    .join("") || "--";
+
+  const driverLanguages = parseLanguageList(bookingWithRide?.ride?.driver?.languages);
+  const customerLanguages = parseLanguageList(bookingWithRide?.preferencesJson)
+    .length
+    ? parseLanguageList(bookingWithRide?.preferencesJson)
+    : parseLanguageList(draft.preferences?.languages);
+  const matchedLanguages = driverLanguages.filter((language) =>
+    customerLanguages.includes(language)
+  );
+  const languagesToShow = matchedLanguages.length > 0 ? matchedLanguages : driverLanguages;
 
   useEffect(() => {
     const bookingId = draft.bookingId;
@@ -82,12 +137,12 @@ export default function RidePage() {
             <Card className="p-6 mb-6">
               <div className="flex items-start gap-4 mb-4">
                 <Avatar className="h-16 w-16">
-                  <AvatarImage src={bookingWithRide?.ride?.driver?.user?.avatarUrl || "https://i.pravatar.cc/150?img=12"} />
-                  <AvatarFallback>{bookingWithRide?.ride?.driver?.user?.fullName?.slice(0,2) || "NT"}</AvatarFallback>
+                  {driverAvatarUrl ? <AvatarImage src={driverAvatarUrl} /> : null}
+                  <AvatarFallback>{driverInitials}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-bold text-lg">{bookingWithRide?.ride?.driver?.user?.fullName || "--"}</h3>
+                    <h3 className="font-bold text-lg">{driverName}</h3>
                     <div className="flex items-center gap-1">
                       <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                       <span className="font-semibold">{bookingWithRide?.ride?.driver?.averageRating ?? ""}</span>
@@ -121,12 +176,25 @@ export default function RidePage() {
             <Card className="p-6 mb-6 bg-blue-50 border-blue-200">
               <h3 className="font-semibold mb-3">{t("supportedLanguages")}</h3>
               <div className="flex flex-wrap gap-2">
-                <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                  {t("japanese")}
-                </span>
-                <span className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm">
-                  {t("vietnamese")}
-                </span>
+                {languagesToShow.length > 0 ? (
+                  languagesToShow.map((language) => {
+                    const isMatched = matchedLanguages.includes(language);
+                    return (
+                      <span
+                        key={language}
+                        className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                          isMatched ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-700"
+                        }`}
+                      >
+                        {getLanguageDisplayName(language)}
+                      </span>
+                    );
+                  })
+                ) : (
+                  <span className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm">
+                    -
+                  </span>
+                )}
               </div>
             </Card>
 
