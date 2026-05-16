@@ -1,14 +1,35 @@
 import { useNavigate } from "react-router";
+import { useEffect, useState } from "react";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Car, Clock, MapPin, History } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft } from "../../services/bookingFlow";
+import { api } from "../../services/api";
 
 export default function UserHomepage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [recentRides, setRecentRides] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRecentBookings = async () => {
+      try {
+        const data = await api.getRecentBookings();
+        if (Array.isArray(data)) {
+          setRecentRides(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch recent bookings:", error);
+        setRecentRides([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRecentBookings();
+  }, []);
 
   const startBookNow = () => {
     clearBookingFlowDraft();
@@ -19,12 +40,6 @@ export default function UserHomepage() {
     clearBookingFlowDraft();
     navigate("/user/reservation");
   };
-
-  const recentRides = [
-    { id: 1, destination: "Noi Bai Airport", date: "2026-03-27", price: "350,000 VND" },
-    { id: 2, destination: "Old Quarter", date: "2026-03-25", price: "120,000 VND" },
-    { id: 3, destination: "Hanoi Station", date: "2026-03-20", price: "180,000 VND" },
-  ];
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -104,24 +119,34 @@ export default function UserHomepage() {
               </Button>
             </div>
             <div className="space-y-3">
-              {recentRides.map((ride) => (
-                <Card key={ride.id} className="p-6 hover:shadow-md transition-shadow cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-gray-100 p-3 rounded-full">
-                        <History className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="font-semibold">{ride.destination}</p>
-                        <p className="text-sm text-gray-600">{ride.date}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold">{ride.price}</p>
-                    </div>
-                  </div>
+              {loading ? (
+                <Card className="p-6 text-center text-gray-500">
+                  {t("loading") || "読み込み中..."}
                 </Card>
-              ))}
+              ) : recentRides.length === 0 ? (
+                <Card className="p-6 text-center text-gray-500">
+                  {t("noRecentDestinations") || "最近のご利用がありません"}
+                </Card>
+              ) : (
+                recentRides.map((ride) => (
+                  <Card key={ride.id} className="p-6 hover:shadow-md transition-shadow cursor-pointer">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="bg-gray-100 p-3 rounded-full">
+                          <History className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{ride.destination}</p>
+                          <p className="text-sm text-gray-600">{ride.date}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold">{ride.price}</p>
+                      </div>
+                    </div>
+                  </Card>
+                ))
+              )}
             </div>
           </div>
         </div>
