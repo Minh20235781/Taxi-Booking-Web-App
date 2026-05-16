@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -18,10 +19,60 @@ import {
   Award
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 export default function DriverProfilePage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  
+  // State lưu thông tin profile từ database
+  const [profileData, setProfileData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const response = await api.getDriverProfile();
+        // Kiểm tra cấu trúc trả về (giống DriverEditProfilePage)
+        const data = response.data || response;
+        setProfileData(data);
+      } catch (error) {
+        console.error("Failed to fetch driver profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  // Trích xuất dữ liệu an toàn bằng Optional Chaining (?.), nếu không có sẽ để chuỗi rỗng ""
+  const user = profileData?.user;
+  const driverProfile = profileData?.driverProfile;
+
+  const fullName = user?.fullName || "";
+  const email = user?.email || "";
+  const phone = user?.phone || "";
+  
+  // Xử lý hiển thị thông tin xe
+  const vehicleInfo = driverProfile?.vehicleModel && driverProfile?.vehiclePlate
+    ? `${driverProfile.vehicleModel} • ${driverProfile.vehiclePlate}`
+    : driverProfile?.vehicleModel || driverProfile?.vehiclePlate || "";
+
+  const averageRating = driverProfile?.averageRating != null ? driverProfile.averageRating : "";
+  const totalTrips = driverProfile?.totalTrips != null ? driverProfile.totalTrips : "";
+
+  // Các trường này hiện chưa có trong file prisma schema của bạn, tạm thời để trống theo yêu cầu
+  const acceptanceRate = ""; 
+  const driverExperience = "";
+
+  // Tạo chữ cái viết tắt cho AvatarFallback từ tên tài xế
+  const getInitials = (name: string) => {
+    if (!name) return "TX";
+    const parts = name.trim().split(" ");
+    return parts.length > 1 
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0][0].toUpperCase();
+  };
 
   const menuItems = [
     {
@@ -68,6 +119,14 @@ export default function DriverProfilePage() {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
+        <p className="text-gray-500 font-medium">Loading profile...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header type="driver" />
@@ -79,23 +138,23 @@ export default function DriverProfilePage() {
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-6">
                 <Avatar className="h-24 w-24">
-                  <AvatarImage src="https://i.pravatar.cc/150?img=12" />
-                  <AvatarFallback>NT</AvatarFallback>
+                  <AvatarImage src={user?.avatarUrl || "https://i.pravatar.cc/150?img=12"} />
+                  <AvatarFallback>{getInitials(fullName)}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <h1 className="text-2xl font-bold mb-2">Nguyen Thanh</h1>
+                  <h1 className="text-2xl font-bold mb-2">{fullName}</h1>
                   <div className="space-y-1 text-gray-600">
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4" />
-                      <span>nguyen.thanh@email.com</span>
+                      <span>{email}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Phone className="h-4 w-4" />
-                      <span>+84 987 654 321</span>
+                      <span>{phone}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Car className="h-4 w-4" />
-                      <span>Toyota Vios • 30A-12345</span>
+                      <span>{vehicleInfo}</span>
                     </div>
                   </div>
                 </div>
@@ -115,20 +174,20 @@ export default function DriverProfilePage() {
             <Card className="p-6 text-center">
               <div className="flex items-center justify-center gap-1 mb-2">
                 <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                <p className="text-3xl font-bold">4.9</p>
+                <p className="text-3xl font-bold">{averageRating}</p>
               </div>
               <p className="text-gray-600">{t("averageRating")}</p>
             </Card>
             <Card className="p-6 text-center">
-              <p className="text-3xl font-bold mb-1">847</p>
+              <p className="text-3xl font-bold mb-1">{totalTrips}</p>
               <p className="text-gray-600">{t("totalRides")}</p>
             </Card>
             <Card className="p-6 text-center">
-              <p className="text-3xl font-bold mb-1">98%</p>
+              <p className="text-3xl font-bold mb-1">{acceptanceRate}</p>
               <p className="text-gray-600">{t("acceptanceRate")}</p>
             </Card>
             <Card className="p-6 text-center">
-              <p className="text-3xl font-bold mb-1">3年</p>
+              <p className="text-3xl font-bold mb-1">{driverExperience}</p>
               <p className="text-gray-600">{t("driverExperience")}</p>
             </Card>
           </div>

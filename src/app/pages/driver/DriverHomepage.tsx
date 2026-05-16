@@ -22,10 +22,20 @@ export default function DriverHomepage() {
   const [isOnline, setIsOnline] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [declinedRides, setDeclinedRides] = useState<number[]>([]);
+  
+  // State bổ sung để quản lý thông tin đánh giá sao động từ DB
+  const [driverProfile, setDriverProfile] = useState<any>(null);
 
   useEffect(() => {
     api.getDriverProfile()
-      .then((data) => setIsOnline(!!data?.isOnline))
+      .then((response) => {
+        const data = response.data || response;
+        setDriverProfile(data?.driverProfile || data);
+        
+        // Cập nhật trạng thái online
+        const onlineStatus = data?.driverProfile?.isOnline ?? data?.isOnline;
+        setIsOnline(!!onlineStatus);
+      })
       .catch(console.error);
   }, []);
 
@@ -74,6 +84,31 @@ export default function DriverHomepage() {
   const handleDecline = (bookingId: number) => {
     setDeclinedRides((prev) => [...prev, bookingId]);
   };
+
+  // Các thông số thống kê động dựa trên DB, nếu chưa nhập hoặc chưa có dữ liệu sẽ trả về trống ""
+  const averageRating = driverProfile?.averageRating != null ? driverProfile.averageRating : "";
+  
+  // Các thông số thống kê theo ngày (hiện tại chưa có trong DB schema của bạn), đặt mặc định trống ""
+  const todayEarnings = ""; 
+  const todaysRides = "";
+  const hoursOnline = "";
+
+  // Hàm xử lý hiển thị thu nhập an toàn
+const formatEarnings = (value: any) => {
+  // Nếu dữ liệu chưa có, null, undefined hoặc chuỗi rỗng thì để trống UI
+  if (value === null || value === undefined || value === "") {
+    return ""; 
+  }
+  
+  const num = Number(value);
+  // Trường hợp không phải là số hợp lệ thì trả về rỗng để tránh hiển thị NaN
+  if (isNaN(num)) {
+    return "";
+  }
+  
+  // Trả về chuỗi đã định dạng (Ví dụ: 850,000 VND hoặc 0 VND)
+  return `${num.toLocaleString()} VND`;
+};
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -158,7 +193,7 @@ export default function DriverHomepage() {
                       {t("todayEarnings")}
                     </p>
                     <p className="text-2xl font-bold">
-                      850,000 VND
+                      {formatEarnings(todayEarnings)}
                     </p>
                   </div>
                 </div>
@@ -173,7 +208,7 @@ export default function DriverHomepage() {
                     <p className="text-sm text-gray-600">
                       {t("todaysRides")}
                     </p>
-                    <p className="text-2xl font-bold">8</p>
+                    <p className="text-2xl font-bold">{formatEarnings(todaysRides)}</p>
                   </div>
                 </div>
               </Card>
@@ -188,7 +223,7 @@ export default function DriverHomepage() {
                       {t("hoursOnline")}
                     </p>
                     <p className="text-2xl font-bold">
-                      6.5{t("hours")}
+                      {hoursOnline ? `${hoursOnline} ${t("hours")}` : ""}
                     </p>
                   </div>
                 </div>
@@ -203,7 +238,7 @@ export default function DriverHomepage() {
                     <p className="text-sm text-gray-600">
                       {t("averageRating")}
                     </p>
-                    <p className="text-2xl font-bold">4.9</p>
+                    <p className="text-2xl font-bold">{averageRating}</p>
                   </div>
                 </div>
               </Card>
@@ -269,7 +304,7 @@ export default function DriverHomepage() {
             </div>
           </div>
 
-          {/* Recent Ratings */}
+          {/* Recent Ratings (Tạm thời để cứng hoặc xử lý lấy từ model Rating sau này) */}
           <Card className="p-6">
             <h3 className="font-bold text-lg mb-4">
               {t("recentRatings")}
@@ -289,23 +324,6 @@ export default function DriverHomepage() {
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
                     2026-03-27
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="flex items-center gap-1">
-                  <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                  <span className="font-bold">5.0</span>
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold mb-1">
-                    鈴木 花子
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    「日本語が話せて助かりました。安全運転でした。」
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    2026-03-25
                   </p>
                 </div>
               </div>
