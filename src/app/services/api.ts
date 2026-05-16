@@ -123,5 +123,7 @@ export const api = {
   declineRide: (bookingId: number) => request(`/driver/decline-ride/${bookingId}`, { method: "POST" }),
   getBookingWithRide: (bookingId: number) => request(`/bookings/with-ride/${bookingId}`),
   getDriverAcceptedRides: () => request(`/driver/accepted-rides`),
-  getRecentBookings: () => request(`/bookings/my-recent`),  getCompletedRides: () => request(`/bookings/my-completed`),
-  getUpcomingRides: () => request(`/bookings/my-upcoming`),};
+  getRecentBookings: () => request(`/bookings/my-recent`),
+  getCompletedRides: () => request(`/bookings/my-completed`),
+  getUpcomingRides: () => request(`/bookings/my-upcoming`),
+};
