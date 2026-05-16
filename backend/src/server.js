@@ -398,7 +398,7 @@ app.get("/driver/pending-requests", authRequired, async (req, res) => {
 
     const bookings = await prisma.booking.findMany({
       where: {
-        status: "REQUESTED",
+        status: { in: ["REQUESTED", "SCHEDULED"] },
         NOT: driverProfileId
           ? {
               declinedRides: {
@@ -412,7 +412,11 @@ app.get("/driver/pending-requests", authRequired, async (req, res) => {
             }
           : undefined
       },
-      include: { user: true, vehicleClass: true }
+      include: { user: true, vehicleClass: true },
+      orderBy: [
+        { scheduledAt: "asc" },
+        { createdAt: "desc" }
+      ]
     });
     res.json(bookings);
   } catch (error) {
