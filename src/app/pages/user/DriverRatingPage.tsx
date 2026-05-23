@@ -7,6 +7,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Star, ThumbsUp } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 export default function DriverRatingPage() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function DriverRatingPage() {
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState("");
   const [selectedCompliments, setSelectedCompliments] = useState<string[]>([]);
+  const [selectedTip, setSelectedTip] = useState<number | null>(null);
 
   const compliments = [
     t("friendlyDriver"),
@@ -33,9 +35,37 @@ export default function DriverRatingPage() {
     );
   };
 
-  const handleSubmit = () => {
-    // Mock submit - navigate to bill page after rating
-    navigate("/user/bill");
+  const handleSubmit = async () => {
+    try {
+      const bookingIdStr = sessionStorage.getItem("last_completed_booking_id") || "";
+      const bookingId = Number(bookingIdStr);
+      if (!bookingId) {
+        // fallback: navigate to bill
+        navigate("/user/bill");
+        return;
+      }
+
+      // fetch booking to get ride id
+      const booking = await api.getBookingWithRide(bookingId);
+      const rideId = booking?.ride?.id;
+      if (!rideId) {
+        // nothing to rate
+        navigate("/user/bill");
+        return;
+      }
+
+      await api.submitRating(rideId, {
+        score: rating,
+        comment,
+        compliments: selectedCompliments,
+        tipAmount: selectedTip || undefined
+      });
+
+      navigate("/user/bill");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit rating. Please try again.");
+    }
   };
 
   return (
@@ -135,13 +165,29 @@ export default function DriverRatingPage() {
             <Card className="p-6 mb-6">
               <h3 className="font-semibold mb-4">{t("addTip")}</h3>
               <div className="grid grid-cols-4 gap-3">
-                {["20,000", "50,000", "100,000", t("other")].map((amount) => (
+                {[
+                  { label: "20,000", value: 20000 },
+                  { label: "50,000", value: 50000 },
+                  { label: "100,000", value: 100000 },
+                  { label: t("other"), value: "other" }
+                ].map((opt) => (
                   <Button
-                    key={amount}
-                    variant="outline"
+                    key={String(opt.value)}
+                    variant={selectedTip === opt.value ? "default" : "outline"}
                     className="h-12"
+                    onClick={() => {
+                      if (opt.value === "other") {
+                        const val = prompt(t("enterTipAmount") || "Enter tip amount (VND)");
+                        if (val) {
+                          const n = Number(val.replace(/[,\s]/g, ""));
+                          if (!Number.isNaN(n) && n > 0) setSelectedTip(n);
+                        }
+                      } else {
+                        setSelectedTip(opt.value as number);
+                      }
+                    }}
                   >
-                    {amount}
+                    {opt.label}
                   </Button>
                 ))}
               </div>

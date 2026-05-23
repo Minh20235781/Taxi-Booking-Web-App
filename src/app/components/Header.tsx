@@ -36,7 +36,7 @@ export function Header({ type = "user" }: HeaderProps) {
             <Globe className="h-4 w-4 mr-2" />
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="bg-white z-50">
+          <SelectContent className="bg-white z-[9999]">
             <SelectItem value="ja">日本語</SelectItem>
             <SelectItem value="en">English</SelectItem>
           </SelectContent>
@@ -49,7 +49,7 @@ export function Header({ type = "user" }: HeaderProps) {
               <Menu className="h-6 w-6" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-56 bg-white p-2 z-50 border border-gray-200">
+          <PopoverContent align="end" className="w-56 bg-white p-2 z-[9999] border border-gray-200">
             <div className="flex flex-col gap-1">
               <Button
                 variant="ghost"

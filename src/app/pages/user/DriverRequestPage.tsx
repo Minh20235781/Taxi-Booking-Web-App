@@ -28,6 +28,15 @@ export default function DriverRequestPage() {
     ...(draft.preferences?.ridePreferences || [])
   ];
   const hasLockedRoute = Boolean(pickupSelection && destinationSelection);
+  const handleRequestDriver = () => {
+    if (draft.entryPoint === "booking") {
+      navigate("/user/ride");
+      return;
+    }
+
+    clearBookingFlowDraft();
+    navigate("/user/home");
+  };
   const handleCancelBooking = () => {
     clearBookingFlowDraft();
     navigate("/user/home");
@@ -145,7 +154,16 @@ export default function DriverRequestPage() {
             {/* Action Buttons */}
             <div className="space-y-3">
               <Button
-                onClick={() => navigate("/user/ride")}
+                onClick={() => {
+                  const entryPoint = draft.entryPoint;
+                  if (entryPoint === "reservation") {
+                    clearBookingFlowDraft();
+                    navigate("/user/home");
+                  } else {
+                    // Do NOT clear draft here for instant bookings, so RidePage/UserBillPage can use it
+                    navigate("/user/ride");
+                  }
+                }}
                 disabled={!hasLockedRoute}
                 className="w-full h-12 bg-black hover:bg-gray-800 text-white"
               >

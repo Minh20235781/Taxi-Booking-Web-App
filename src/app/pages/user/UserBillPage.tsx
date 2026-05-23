@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -10,62 +10,32 @@ import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft, getBookingFlowDraft } from "../../services/bookingFlow";
 import { calculateFare, formatVnd } from "../../services/pricing";
 import { api } from "../../services/api";
-import type { PaymentMethodCode } from "../../services/api";
-
-function toPaymentMethodCode(methodId?: string): PaymentMethodCode {
-  if (methodId === "momo") {
-    return "MOMO";
-  }
-  if (methodId === "cash") {
-    return "CASH";
-  }
-  return "CARD";
-}
 
 export default function UserBillPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [email, setEmail] = useState("tanaka@email.com");
   const [emailSent, setEmailSent] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<"idle" | "paid" | "error">("idle");
-  const [paymentError, setPaymentError] = useState("");
-  const hasConfirmedPayment = useRef(false);
   const draft = getBookingFlowDraft();
-  const pickupText = draft.pickupText || "-";
-  const destinationText = draft.destinationText || "-";
-  const fare = draft.vehicle?.code
+  const [booking, setBooking] = useState<any | null>(null);
+  const pickupText = booking?.pickupAddress || draft.pickupText || "-";
+  const destinationText = booking?.destination || draft.destinationText || "-";
+  const fare = booking?.vehicleClass
+    ? null
+    : draft.vehicle?.code
     ? calculateFare(
         draft.vehicle.code,
         draft.routeDistanceMeters || 0,
         draft.routeDurationSeconds || 0
       )
     : null;
-  const totalAmount = fare ? formatVnd(fare.totalFare) : draft.vehicle?.price || "-";
-  const paymentLabel = draft.paymentMethodLabel || "-";
-  const dateTimeText = draft.reservationDate
+  const totalAmount = booking?.estimatedFare ? formatVnd(booking.estimatedFare) : fare ? formatVnd(fare.totalFare) : draft.vehicle?.price || "-";
+  const paymentLabel = booking?.paymentMethodLabel || draft.paymentMethodLabel || "-";
+  const dateTimeText = booking?.scheduledAt
+    ? `${new Date(booking.scheduledAt).toLocaleDateString()} ${new Date(booking.scheduledAt).toLocaleTimeString().slice(0,5)}`
+    : draft.reservationDate
     ? `${new Date(draft.reservationDate).toLocaleDateString()} ${draft.reservationTime || ""}`
     : draft.reservationTime || "-";
-
-  useEffect(() => {
-    if (!draft.bookingId || hasConfirmedPayment.current) {
-      return;
-    }
-    hasConfirmedPayment.current = true;
-    api
-      .confirmBookingPayment(draft.bookingId, {
-        method: toPaymentMethodCode(draft.paymentMethodId),
-        label: draft.paymentMethodLabel,
-        amount: fare?.totalFare
-      })
-      .then(() => {
-        setPaymentStatus("paid");
-        setPaymentError("");
-      })
-      .catch((error) => {
-        setPaymentStatus("error");
-        setPaymentError(error instanceof Error ? error.message : "Could not confirm payment.");
-      });
-  }, [draft.bookingId, draft.paymentMethodId, draft.paymentMethodLabel, fare?.totalFare]);
 
   const handleBackHome = () => {
     clearBookingFlowDraft();
@@ -79,6 +49,22 @@ export default function UserBillPage() {
     setEmailSent(true);
     setTimeout(() => setEmailSent(false), 3000);
   };
+
+  useEffect(() => {
+    let mounted = true;
+    const bid = draft.bookingId || sessionStorage.getItem('last_completed_booking_id');
+    if (!bid) return;
+    (async () => {
+      try {
+        const res: any = await api.getBookingWithRide(Number(bid));
+        if (!mounted) return;
+        setBooking(res.booking || res);
+      } catch (err) {
+        console.error("Failed to load booking for bill page", err);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -162,13 +148,6 @@ export default function UserBillPage() {
               <div className="flex-1">
                 <p className="text-sm text-gray-600">{t("paymentMethod")}</p>
                 <p className="font-semibold">{paymentLabel}</p>
-                <p className={`text-sm mt-1 ${paymentStatus === "error" ? "text-red-600" : "text-green-700"}`}>
-                  {paymentStatus === "paid"
-                    ? "Payment saved as PAID"
-                    : paymentStatus === "error"
-                      ? paymentError
-                      : "Confirming payment..."}
-                </p>
               </div>
             </div>
           </Card>

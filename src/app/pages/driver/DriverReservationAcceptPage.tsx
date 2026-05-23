@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -25,6 +25,7 @@ import {
   Check,
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 interface Reservation {
   id: string;
@@ -43,117 +44,84 @@ interface Reservation {
   specialRequest?: string;
 }
 
-const mockReservations: Reservation[] = [
-  {
-    id: "1",
-    date: "2026-04-02",
-    time: "10:00",
-    customerName: "田中 太郎",
-    customerAvatar: "https://i.pravatar.cc/150?img=33",
-    customerRating: 4.9,
-    pickup: "123 Tran Hung Dao St, Hoan Kiem",
-    destination: "Noi Bai International Airport",
-    distance: "35 km",
-    duration: "45",
-    earnings: "350,000",
-    languages: ["japanese", "english"],
-    preferences: ["quietRide", "airconRequired"],
-    specialRequest:
-      "空港までの早朝移動です。時間厳守でお願いします。",
-  },
-  {
-    id: "2",
-    date: "2026-04-02",
-    time: "14:30",
-    customerName: "鈴木 花子",
-    customerAvatar: "https://i.pravatar.cc/150?img=44",
-    customerRating: 4.8,
-    pickup: "Vincom Center, Ba Dinh",
-    destination: "Lotte Center Hanoi, Cau Giay",
-    distance: "8 km",
-    duration: "20",
-    earnings: "120,000",
-    languages: ["japanese"],
-    preferences: ["quietRide"],
-  },
-  {
-    id: "3",
-    date: "2026-04-03",
-    time: "09:00",
-    customerName: "佐藤 一郎",
-    customerAvatar: "https://i.pravatar.cc/150?img=12",
-    customerRating: 5.0,
-    pickup: "Hanoi Train Station, Hoan Kiem",
-    destination: "Old Quarter Hotel, Hoan Kiem",
-    distance: "3 km",
-    duration: "15",
-    earnings: "80,000",
-    languages: ["japanese", "english"],
-    preferences: ["airconRequired"],
-    specialRequest: "大きなスーツケースが2つあります。",
-  },
-  {
-    id: "4",
-    date: "2026-04-03",
-    time: "16:00",
-    customerName: "山田 美咲",
-    customerAvatar: "https://i.pravatar.cc/150?img=25",
-    customerRating: 4.7,
-    pickup: "National Museum of Vietnamese History",
-    destination: "Temple of Literature",
-    distance: "5 km",
-    duration: "18",
-    earnings: "95,000",
-    languages: ["japanese"],
-    preferences: ["quietRide"],
-  },
-  {
-    id: "5",
-    date: "2026-04-05",
-    time: "07:30",
-    customerName: "高橋 健太",
-    customerAvatar: "https://i.pravatar.cc/150?img=8",
-    customerRating: 4.9,
-    pickup: "JW Marriott Hotel Hanoi",
-    destination: "Noi Bai International Airport",
-    distance: "32 km",
-    duration: "40",
-    earnings: "330,000",
-    languages: ["japanese", "english"],
-    preferences: ["quietRide", "airconRequired"],
-    specialRequest:
-      "ビジネス会議のため、時間厳守でお願いします。",
-  },
-];
-
 export default function DriverReservationAcceptPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const [currentDate, setCurrentDate] = useState(
-    new Date(2026, 3, 1),
-  ); // April 2026
-  const [selectedDate, setSelectedDate] =
-    useState("2026-04-02");
+  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  const getLocalTodayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const todayStr = getLocalTodayStr();
+  
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
   const [selectedReservation, setSelectedReservation] =
     useState<Reservation | null>(null);
-  const [acceptedReservations, setAcceptedReservations] =
-    useState<Reservation[]>([
-      {
-        id: "accepted-1",
-        date: "2026-04-01",
-        time: "18:00",
-        customerName: "中村 健",
-        customerAvatar: "https://i.pravatar.cc/150?img=15",
-        customerRating: 4.8,
-        pickup: "Sheraton Hanoi Hotel",
-        destination: "Hoan Kiem Lake",
-        distance: "4 km",
-        duration: "12",
-        earnings: "70,000",
-        languages: ["japanese"],
-        preferences: ["quietRide"],
-      },
-    ]);
+  const [acceptedReservations, setAcceptedReservations] = useState<Reservation[]>([]);
+  const [declinedReservations, setDeclinedReservations] = useState<string[]>([]);
+
+  useEffect(() => {
+    let interval: number;
+
+    const fetchData = () => {
+      // Fetch pending requests (available reservations)
+      api.getPendingRequests()
+        .then((res) => {
+          const bookings = (res || []).filter((b: any) => b.bookingType === "SCHEDULED");
+          const mapped = bookings.map((b: any) => {
+            const when = b.scheduledAt || b.createdAt;
+            let dateStr = "";
+            let timeStr = "";
+            if (when) {
+              const d = new Date(when);
+              dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+              timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+            }
+            let prefs = [];
+            let langs = [];
+            if (b.preferencesJson) {
+              try {
+                const parsed = JSON.parse(b.preferencesJson);
+                if (Array.isArray(parsed.languages)) langs = parsed.languages;
+                if (Array.isArray(parsed.ridePreferences)) prefs = parsed.ridePreferences;
+              } catch {}
+            }
+            return {
+              id: String(b.id),
+              date: dateStr,
+              time: timeStr,
+              customerName: b.user?.fullName || "",
+              customerAvatar: b.user?.avatarUrl || null,
+              customerRating: b.user?.averageRating || 0,
+              pickup: b.pickupAddress,
+              destination: b.destination,
+              distance: b.routeDistanceMeters ? `${Math.round(b.routeDistanceMeters / 1000)} km` : "",
+              duration: b.routeDurationSeconds ? String(Math.round(b.routeDurationSeconds / 60)) : "",
+              earnings: b.estimatedFare ? String(Math.round(b.estimatedFare)) : "",
+              languages: langs,
+              preferences: prefs,
+              specialRequest: null
+            };
+          });
+          setAvailableReservations(mapped);
+        })
+        .catch((err) => console.error("Failed to fetch pending requests:", err));
+
+      // Fetch accepted rides for the driver
+      api.getDriverAcceptedRides()
+        .then((res) => {
+          const list = res || [];
+          setAcceptedReservations(list);
+        })
+        .catch((err) => console.error("Failed to fetch accepted rides:", err));
+    };
+
+    fetchData();
+    interval = window.setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -169,20 +137,19 @@ export default function DriverReservationAcceptPage() {
   const { daysInMonth, startingDayOfWeek, year, month } =
     getDaysInMonth(currentDate);
 
-  const availableReservations = mockReservations.filter(
-    (res) =>
-      !acceptedReservations.find((acc) => acc.id === res.id),
+  // filter out reservations already accepted or declined by this driver
+  const availableReservationsFiltered = availableReservations.filter(
+    (res) => 
+      !acceptedReservations.find((acc: any) => String(acc.id) === res.id) &&
+      !declinedReservations.includes(res.id)
   );
 
-  const reservationsForSelectedDate =
-    availableReservations.filter(
-      (res) => res.date === selectedDate,
-    );
+  const reservationsForSelectedDate = availableReservationsFiltered.filter(
+    (res) => res.date === selectedDate
+  );
 
   const getReservationCountForDate = (dateStr: string) => {
-    return availableReservations.filter(
-      (res) => res.date === dateStr,
-    ).length;
+    return availableReservationsFiltered.filter((res) => res.date === dateStr).length;
   };
 
   const handlePrevMonth = () => {
@@ -211,24 +178,46 @@ export default function DriverReservationAcceptPage() {
     setSelectedReservation(null);
   };
 
-  const handleAccept = (reservation: Reservation) => {
-    setAcceptedReservations([
-      ...acceptedReservations,
-      reservation,
-    ]);
-    setSelectedReservation(null);
+  const handleAccept = async (reservation: Reservation) => {
+    try {
+      await api.acceptRide(Number(reservation.id));
+      setAcceptedReservations([
+        ...acceptedReservations,
+        reservation,
+      ]);
+      // remove from available immediately
+      setAvailableReservations((prev) => prev.filter((r) => r.id !== reservation.id));
+      setSelectedReservation(null);
+      navigate("/driver/ride-accept");
+    } catch (error) {
+      console.error(error);
+      const message = error?.message || (error && String(error)) || "Failed to accept reservation.";
+      alert(message.includes("Booking is no longer available") ? "Failed to accept reservation. It might have been taken or canceled." : message);
+    }
   };
 
-  const handleDecline = (reservationId: string) => {
-    setSelectedReservation(null);
+  const handleDecline = async (reservationId: string) => {
+    try {
+      await api.declineRide(Number(reservationId));
+      setSelectedReservation(null);
+      setDeclinedReservations([...declinedReservations, reservationId]);
+    } catch (error) {
+      console.error("Decline failed:", error);
+    }
   };
 
-  const handleCancelAcceptance = (reservationId: string) => {
-    setAcceptedReservations(
-      acceptedReservations.filter(
-        (res) => res.id !== reservationId,
-      ),
-    );
+  const handleCancelAcceptance = async (reservationId: string) => {
+    try {
+      await api.cancelAcceptance(Number(reservationId));
+      setAcceptedReservations(
+        acceptedReservations.filter((res) => res.id !== reservationId),
+      );
+      // refresh available list by removing local accepted reservation so it may reappear via fetch
+      setAvailableReservations((prev) => prev.filter((r) => r.id !== reservationId));
+    } catch (err) {
+      console.error('Failed to cancel acceptance:', err);
+      alert(t('failedToCancelAcceptance') || 'Failed to cancel acceptance');
+    }
   };
 
   const monthNames = [
@@ -327,7 +316,7 @@ export default function DriverReservationAcceptPage() {
                         getReservationCountForDate(dateStr);
                       const isSelected =
                         dateStr === selectedDate;
-                      const isToday = dateStr === "2026-04-01";
+                      const isToday = dateStr === todayStr;
 
                       return (
                         <button
@@ -530,7 +519,7 @@ export default function DriverReservationAcceptPage() {
                                 </div>
                               )}
 
-                              {/* Contact Buttons *
+                              {/* Contact Buttons */}
                             <div className="flex gap-2 mb-4">
                               <Button variant="outline" size="sm" className="flex-1 gap-2">
                                 <Phone className="h-4 w-4" />

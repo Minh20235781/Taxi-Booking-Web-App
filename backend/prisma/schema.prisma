@@ -36,27 +36,47 @@ model User {
 }
 
 model DriverProfile {
-  id                   Int      @id @default(autoincrement())
-  userId               Int      @unique
-  licenseNumber        String?
-  vehiclePlate         String?
-  vehicleModel         String?
-  vehicleYear          String?
-  vehicleColor         String?
-  identificationNumber String?
-  languages            String?
-  bankName             String?
-  accountNumber        String?
-  accountHolderName    String?
-  isOnline             Boolean  @default(false)
-  currentLat           Float?
-  currentLng           Float?
-  averageRating        Float?
-  totalTrips           Int      @default(0)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  driverRides          Ride[]   @relation("driver")
+  id                     Int      @id @default(autoincrement())
+  userId                 Int      @unique
+  licenseNumber          String?
+  vehiclePlate           String?
+  vehicleModel           String?
+  vehicleYear            String?
+  vehiclePhotoUrl        String?
+  vehicleColor           String?
+  identificationNumber   String?
+  idCardFrontUrl         String?
+  idCardBackUrl          String?
+  licensePhotoUrl        String?
+  languageCertificationUrl String?
+  languages              String?
+  bankName               String?
+  accountNumber          String?
+  accountHolderName      String?
+  isOnline               Boolean  @default(false)
+  currentLat             Float?
+  currentLng             Float?
+  averageRating          Float?
+  totalTrips             Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  driverRides            Ride[]   @relation("driver")
+  declinedRides          DeclinedRide[]
+}
+
+model DeclinedRide {
+  id              Int      @id @default(autoincrement())
+  bookingId       Int
+  driverProfileId Int
+  createdAt       DateTime @default(now())
+
+  booking         Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  driver          DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, driverProfileId])
+  @@index([bookingId])
+  @@index([driverProfileId])
 }
 
 model VehicleClass {
@@ -99,6 +119,10 @@ model Booking {
   user                 User         @relation(fields: [userId], references: [id], onDelete: Restrict)
   vehicleClass         VehicleClass @relation(fields: [vehicleClassId], references: [id], onDelete: Restrict)
   ride                 Ride?
+  declinedRides        DeclinedRide[]
+
+  // Snapshot of customer at time of booking completion to preserve history
+  customerSnapshotJson String?
 
   @@index([userId])
   @@index([status])

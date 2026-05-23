@@ -67,6 +67,8 @@ export const api = {
     request("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
 
   me: () => request("/auth/me"),
+  updateUserProfile: (payload: { fullName?: string; email?: string; phone?: string; address?: string; city?: string; country?: string; avatarUrl?: string }) =>
+    request("/user/profile", { method: "PUT", body: JSON.stringify(payload) }),
 
   suggestLocations: (
     query: string,
@@ -128,6 +130,20 @@ export const api = {
     };
   }) => request("/bookings/create-flow", { method: "POST", body: JSON.stringify(payload) }),
 
+  getDriverProfile: () => request("/driver/profile"),
+  updateDriverProfile: (payload: any) => request("/driver/profile", { method: "PUT", body: JSON.stringify(payload) }),
+  getPendingRequests: () => request("/driver/pending-requests"),
+  acceptRide: (bookingId: number) => request(`/driver/accept-ride/${bookingId}`, { method: "POST" }),
+  completeRide: (bookingId: number) => request(`/driver/complete-ride/${bookingId}`, { method: "POST" }),
+  declineRide: (bookingId: number) => request(`/driver/decline-ride/${bookingId}`, { method: "POST" }),
+  cancelAcceptance: (bookingId: number) => request(`/driver/cancel-acceptance/${bookingId}`, { method: "POST" }),
+  getBookingWithRide: (bookingId: number) => request(`/bookings/with-ride/${bookingId}`),
+  submitRating: (rideId: number, payload: { score: number; comment?: string; compliments?: string[]; tipAmount?: number }) =>
+    request(`/rides/${rideId}/rating`, { method: "POST", body: JSON.stringify(payload) }),
+  getDriverAcceptedRides: () => request(`/driver/accepted-rides`),
+  getRecentBookings: () => request(`/bookings/my-recent`),
+  getCompletedRides: () => request(`/bookings/my-completed`),
+  getUpcomingRides: () => request(`/bookings/my-upcoming`),
   updateBookingPaymentMethod: (
     bookingId: number,
     payload: { method: PaymentMethodCode; label?: string }
@@ -136,7 +152,6 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),
-
   confirmBookingPayment: (
     bookingId: number,
     payload: { method?: PaymentMethodCode; label?: string; amount?: number } = {}
@@ -145,7 +160,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-
   getRideMessages: (rideId: number): Promise<{ messages: RideMessage[] }> =>
-    request(`/rides/${rideId}/messages`)
+    request(`/rides/${rideId}/messages`),
 };

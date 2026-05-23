@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -9,19 +10,39 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { Camera, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 export default function UserEditProfilePage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [formData, setFormData] = useState({
-    firstName: "太郎",
-    lastName: "田中",
-    email: "tanaka@email.com",
-    phone: "+84 123 456 789",
-    address: "123 Tran Hung Dao St, Hoan Kiem",
-    city: "Hanoi",
-    country: "Vietnam",
+    fullName: "",
+    email: "",
+    phone: "",
+    address: "",
+    city: "",
+    country: "",
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   });
+
+  useEffect(() => {
+    api.me()
+      .then((res: any) => {
+        const u = res.user || res;
+        setFormData((prev) => ({
+          ...prev,
+          fullName: u.fullName || "",
+          email: u.email || "",
+          phone: u.phone || "",
+          address: u.address || "",
+          city: u.city || "",
+          country: u.country || "",
+        }));
+      })
+      .catch((err) => console.error("Failed to load user for edit:", err));
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -31,8 +52,22 @@ export default function UserEditProfilePage() {
   };
 
   const handleSave = () => {
-    toast.success(t("profileUpdated"));
-    navigate("/user/profile");
+    api.updateUserProfile({
+      fullName: formData.fullName,
+      email: formData.email,
+      phone: formData.phone,
+      address: formData.address,
+      city: formData.city,
+      country: formData.country
+    })
+      .then(() => {
+        toast.success(t("profileUpdated"));
+        navigate("/user/profile");
+      })
+      .catch((err) => {
+        console.error("Failed to update user:", err);
+        toast.error(t("failedToUpdateProfile") || "Failed to update profile");
+      });
   };
 
   return (
@@ -79,23 +114,13 @@ export default function UserEditProfilePage() {
           <Card className="p-6 mb-6">
             <h3 className="font-semibold mb-4">{t("personalInformation")}</h3>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">{t("firstName")}</Label>
-                  <Input
-                    id="firstName"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">{t("lastName")}</Label>
-                  <Input
-                    id="lastName"
-                    value={formData.lastName}
-                    onChange={handleChange}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="fullName">{t("fullName")}</Label>
+                <Input
+                  id="fullName"
+                  value={formData.fullName}
+                  onChange={handleChange}
+                />
               </div>
 
               <div className="space-y-2">
@@ -163,6 +188,8 @@ export default function UserEditProfilePage() {
                 <Input
                   id="currentPassword"
                   type="password"
+                  value={formData.currentPassword}
+                  onChange={handleChange}
                   placeholder={t("enterCurrentPassword")}
                 />
               </div>
@@ -172,6 +199,8 @@ export default function UserEditProfilePage() {
                 <Input
                   id="newPassword"
                   type="password"
+                  value={formData.newPassword}
+                  onChange={handleChange}
                   placeholder={t("enterNewPassword")}
                 />
               </div>
@@ -181,6 +210,8 @@ export default function UserEditProfilePage() {
                 <Input
                   id="confirmPassword"
                   type="password"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
                   placeholder={t("reenterPassword")}
                 />
               </div>
