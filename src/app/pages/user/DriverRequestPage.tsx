@@ -28,6 +28,15 @@ export default function DriverRequestPage() {
     ...(draft.preferences?.ridePreferences || [])
   ];
   const hasLockedRoute = Boolean(pickupSelection && destinationSelection);
+  const handleRequestDriver = () => {
+    if (draft.entryPoint === "booking") {
+      navigate("/user/ride");
+      return;
+    }
+
+    clearBookingFlowDraft();
+    navigate("/user/home");
+  };
   const handleCancelBooking = () => {
     clearBookingFlowDraft();
     navigate("/user/home");
