@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 const AUTH_TOKEN_KEY = "auth_token";
 
 export interface LocationSuggestion {
@@ -7,6 +7,18 @@ export interface LocationSuggestion {
   lat: number;
   lon: number;
 }
+
+export interface RideMessage {
+  id: number;
+  rideId: number;
+  senderUserId: number;
+  senderRole: "USER" | "DRIVER";
+  body: string;
+  translatedBody?: string | null;
+  createdAt: string;
+}
+
+export type PaymentMethodCode = "MOMO" | "CASH" | "CARD";
 
 function getAuthToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY);
@@ -132,4 +144,22 @@ export const api = {
   getRecentBookings: () => request(`/bookings/my-recent`),
   getCompletedRides: () => request(`/bookings/my-completed`),
   getUpcomingRides: () => request(`/bookings/my-upcoming`),
+  updateBookingPaymentMethod: (
+    bookingId: number,
+    payload: { method: PaymentMethodCode; label?: string }
+  ) =>
+    request(`/bookings/${bookingId}/payment-method`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  confirmBookingPayment: (
+    bookingId: number,
+    payload: { method?: PaymentMethodCode; label?: string; amount?: number } = {}
+  ) =>
+    request(`/bookings/${bookingId}/confirm-payment`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  getRideMessages: (rideId: number): Promise<{ messages: RideMessage[] }> =>
+    request(`/rides/${rideId}/messages`),
 };
