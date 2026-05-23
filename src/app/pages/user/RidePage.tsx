@@ -8,7 +8,7 @@ import { Card } from "../../components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Phone, MessageCircle, Star, MapPin, Navigation } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { clearBookingFlowDraft, getBookingFlowDraft } from "../../services/bookingFlow";
+import { clearBookingFlowDraft, getBookingFlowDraft, updateBookingFlowDraft } from "../../services/bookingFlow";
 import type { LocationSuggestion } from "../../services/api";
 import { calculateFare, formatVnd } from "../../services/pricing";
 import { api } from "../../services/api";
@@ -70,7 +70,14 @@ export default function RidePage() {
       : draft.vehicle?.price || "-";
 
   // Simulate ride completion after some time (for demo)
-  const handleCompleteRide = () => {
+  const handleCompleteRide = async () => {
+    if (draft.bookingId) {
+       try {
+         await api.completeRide(draft.bookingId as number);
+       } catch (error) {
+         console.error("Failed to complete ride on server", error);
+       }
+    }
     setIsCompleted(true);
     // Navigate to bill page
     setTimeout(() => {
@@ -155,14 +162,28 @@ export default function RidePage() {
 
               <div className="flex gap-3">
                 <Button
-                  onClick={() => navigate("/user/message-call")}
+                  onClick={() => {
+                    try {
+                      if (bookingWithRide?.ride?.id) {
+                        updateBookingFlowDraft({ bookingId: bookingWithRide?.id });
+                      }
+                    } catch {}
+                    navigate(`/user/message-call?bookingId=${bookingWithRide?.id || ""}`);
+                  }}
                   className="flex-1 bg-black hover:bg-gray-800 text-white"
                 >
                   <MessageCircle className="h-4 w-4 mr-2" />
                   {t("message")}
                 </Button>
                 <Button
-                  onClick={() => navigate("/user/message-call")}
+                  onClick={() => {
+                    try {
+                      if (bookingWithRide?.ride?.id) {
+                        updateBookingFlowDraft({ bookingId: bookingWithRide?.id });
+                      }
+                    } catch {}
+                    navigate(`/user/message-call?bookingId=${bookingWithRide?.id || ""}`);
+                  }}
                   variant="outline"
                   className="flex-1"
                 >

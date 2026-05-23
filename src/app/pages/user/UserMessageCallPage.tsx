@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, ArrowLeft, Send, Star, Languages } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
+import { getBookingFlowDraft } from "../../services/bookingFlow";
 
 export default function UserMessageCallPage() {
   const navigate = useNavigate();
@@ -33,6 +35,20 @@ export default function UserMessageCallPage() {
     }
   };
 
+  const [bookingWithRide, setBookingWithRide] = useState<any | null>(null);
+  const draft = getBookingFlowDraft();
+
+  useEffect(() => {
+    const bookingId = draft.bookingId;
+    if (!bookingId) return;
+    api.getBookingWithRide(bookingId)
+      .then((res) => {
+        const data = res.data || res;
+        setBookingWithRide(data);
+      })
+      .catch((err) => console.error("Failed to fetch booking with ride:", err));
+  }, [draft.bookingId]);
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <Header type="user" />
@@ -54,18 +70,29 @@ export default function UserMessageCallPage() {
         <div className="p-6 border-b">
           <div className="max-w-4xl mx-auto flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src="https://i.pravatar.cc/150?img=12" />
-              <AvatarFallback>NT</AvatarFallback>
+              {bookingWithRide?.ride?.driver?.user?.avatarUrl ? (
+                <AvatarImage src={bookingWithRide.ride.driver.user.avatarUrl} />
+              ) : null}
+              <AvatarFallback>
+                {(
+                  (bookingWithRide?.ride?.driver?.user?.fullName || "")
+                    .split(" ")
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((p: string) => p[0])
+                    .join("") || "--"
+                )}
+              </AvatarFallback>
             </Avatar>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-bold text-lg">Nguyen Thanh</h3>
+                <h3 className="font-bold text-lg">{bookingWithRide?.ride?.driver?.user?.fullName || "--"}</h3>
                 <div className="flex items-center gap-1">
                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-semibold">4.9</span>
+                  <span className="font-semibold">{bookingWithRide?.ride?.driver?.averageRating ?? ""}</span>
                 </div>
               </div>
-              <p className="text-gray-600">Toyota Vios • 30A-12345</p>
+              <p className="text-gray-600">{(bookingWithRide?.ride?.driver?.vehicleModel || "")} • {(bookingWithRide?.ride?.driver?.vehiclePlate || "")}</p>
             </div>
           </div>
         </div>
@@ -158,11 +185,23 @@ export default function UserMessageCallPage() {
               <div className="max-w-md w-full p-6">
                 <Card className="p-8 text-center">
                   <Avatar className="h-32 w-32 mx-auto mb-6">
-                    <AvatarImage src="https://i.pravatar.cc/150?img=12" />
-                    <AvatarFallback>NT</AvatarFallback>
+                    {bookingWithRide?.ride?.driver?.user?.avatarUrl ? (
+                      <AvatarImage src={bookingWithRide.ride.driver.user.avatarUrl} />
+                    ) : null}
+                    <AvatarFallback>
+                      {(
+                        (bookingWithRide?.ride?.driver?.user?.fullName || "")
+                          .split(" ")
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((p: string) => p[0])
+                          .join("") || "NT"
+                      )}
+                    </AvatarFallback>
                   </Avatar>
                   
-                  <h2 className="text-2xl font-bold mb-2">Nguyen Thanh</h2>
+                  <h2 className="text-2xl font-bold mb-2">{bookingWithRide?.ride?.driver?.user?.fullName || "--"}</h2>
+                  <p className="text-gray-600 mb-1">{bookingWithRide?.ride?.driver?.vehicleModel || ""} • {bookingWithRide?.ride?.driver?.vehiclePlate || ""}</p>
                   <p className="text-gray-600 mb-8">
                     {isCalling ? "通話中..." : "タップして通話を開始"}
                   </p>
@@ -214,10 +253,22 @@ export default function UserMessageCallPage() {
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
                       <Avatar className="h-32 w-32 mx-auto mb-6">
-                        <AvatarImage src="https://i.pravatar.cc/150?img=12" />
-                        <AvatarFallback>NT</AvatarFallback>
+                        {bookingWithRide?.ride?.driver?.user?.avatarUrl ? (
+                          <AvatarImage src={bookingWithRide.ride.driver.user.avatarUrl} />
+                        ) : null}
+                        <AvatarFallback>
+                          {(
+                            (bookingWithRide?.ride?.driver?.user?.fullName || "")
+                              .split(" ")
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .map((p: string) => p[0])
+                              .join("") || "NT"
+                          )}
+                        </AvatarFallback>
                       </Avatar>
-                      <h2 className="text-2xl font-bold mb-2 text-white">Nguyen Thanh</h2>
+                      <h2 className="text-2xl font-bold mb-2 text-white">{bookingWithRide?.ride?.driver?.user?.fullName || "--"}</h2>
+                      <p className="text-gray-400 mb-1">{bookingWithRide?.ride?.driver?.vehicleModel || ""} • {bookingWithRide?.ride?.driver?.vehiclePlate || ""}</p>
                       <p className="text-gray-400 mb-8">ビデオ通話を開始</p>
                       <Button
                         onClick={() => setIsCalling(true)}
@@ -232,11 +283,22 @@ export default function UserMessageCallPage() {
                     {/* Main Video (Driver) */}
                     <div className="w-full h-full bg-gray-800 flex items-center justify-center">
                       <div className="text-center">
-                        <Avatar className="h-48 w-48 mx-auto mb-4">
-                          <AvatarImage src="https://i.pravatar.cc/150?img=12" />
-                          <AvatarFallback>NT</AvatarFallback>
-                        </Avatar>
-                        <p className="text-white text-lg">Nguyen Thanh</p>
+                          <Avatar className="h-48 w-48 mx-auto mb-4">
+                            {bookingWithRide?.ride?.driver?.user?.avatarUrl ? (
+                              <AvatarImage src={bookingWithRide.ride.driver.user.avatarUrl} />
+                            ) : null}
+                            <AvatarFallback>
+                              {(
+                                (bookingWithRide?.ride?.driver?.user?.fullName || "")
+                                  .split(" ")
+                                  .filter(Boolean)
+                                  .slice(0, 2)
+                                  .map((p: string) => p[0])
+                                  .join("") || "NT"
+                              )}
+                            </AvatarFallback>
+                          </Avatar>
+                          <p className="text-white text-lg">{bookingWithRide?.ride?.driver?.user?.fullName || "--"}</p>
                       </div>
                     </div>
 

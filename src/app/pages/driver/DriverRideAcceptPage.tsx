@@ -8,11 +8,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { MapPin, Navigation, Star, Clock, DollarSign } from "lucide-react";
 import { Progress } from "../../components/ui/progress";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 export default function DriverRideAcceptPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [countdown, setCountdown] = useState(15);
+  const [currentRide, setCurrentRide] = useState<any>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -28,6 +30,21 @@ export default function DriverRideAcceptPage() {
 
     return () => clearInterval(timer);
   }, [navigate]);
+
+  useEffect(() => {
+    // Try to load the first accepted ride for driver and display it here
+    let mounted = true;
+    api.getDriverAcceptedRides()
+      .then((list: any) => {
+        if (!mounted) return;
+        if (Array.isArray(list) && list.length > 0) {
+          const ride = list[0];
+          setCurrentRide(ride);
+        }
+      })
+      .catch((err) => console.error("Failed to load accepted rides:", err));
+    return () => { mounted = false; };
+  }, []);
 
   const handleAccept = () => {
     navigate("/driver/ride-info");
@@ -59,15 +76,15 @@ export default function DriverRideAcceptPage() {
               <h3 className="font-semibold mb-4">{t("customerInfo")}</h3>
               <div className="flex items-center gap-4 mb-4">
                 <Avatar className="h-16 w-16">
-                  <AvatarImage src="https://i.pravatar.cc/150?img=33" />
-                  <AvatarFallback>田中</AvatarFallback>
+                  <AvatarImage src={currentRide?.customerAvatar || "https://i.pravatar.cc/150?img=33"} />
+                  <AvatarFallback>{currentRide?.customerName?.slice(0,2) || "顧客"}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-bold text-lg">田中 太郎</p>
+                  <p className="font-bold text-lg">{currentRide?.customerName || "—"}</p>
                   <div className="flex items-center gap-1">
                     <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="font-semibold">4.8</span>
-                    <span className="text-sm text-gray-600">（47{t("rides")}）</span>
+                    <span className="font-semibold">{currentRide?.customerRating ?? "-"}</span>
+                    <span className="text-sm text-gray-600"></span>
                   </div>
                 </div>
               </div>
@@ -76,9 +93,12 @@ export default function DriverRideAcceptPage() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm font-semibold text-blue-800 mb-1">{t("languageRequirements")}</p>
                 <div className="flex gap-2">
-                  <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold">
-                    {t("japanese")}
-                  </span>
+                  {(currentRide?.languages && currentRide.languages.length > 0)
+                    ? currentRide.languages.map((lang: string) => (
+                        <span key={lang} className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold">{t(lang)}</span>
+                      ))
+                    : <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-semibold">—</span>
+                  }
                 </div>
               </div>
             </Card>
@@ -99,11 +119,11 @@ export default function DriverRideAcceptPage() {
                   <div className="flex-1 space-y-4">
                     <div>
                       <p className="text-sm text-gray-600">{t("pickupPoint")}</p>
-                      <p className="font-semibold">123 Tran Hung Dao St, Hoan Kiem</p>
+                      <p className="font-semibold">{currentRide?.pickup || "—"}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">{t("destinationPoint")}</p>
-                      <p className="font-semibold">Noi Bai International Airport</p>
+                      <p className="font-semibold">{currentRide?.destination || "—"}</p>
                     </div>
                   </div>
                 </div>
@@ -115,14 +135,14 @@ export default function DriverRideAcceptPage() {
                     <Navigation className="h-4 w-4" />
                     <span className="text-sm">{t("distance")}</span>
                   </div>
-                  <p className="font-bold">32 km</p>
+                  <p className="font-bold">{currentRide?.distance || "-"}</p>
                 </div>
                 <div>
                   <div className="flex items-center gap-2 text-gray-600 mb-1">
                     <Clock className="h-4 w-4" />
                     <span className="text-sm">{t("estimatedTime")}</span>
                   </div>
-                  <p className="font-bold">45{t("minutes")}</p>
+                  <p className="font-bold">{currentRide?.duration ? `${currentRide.duration}${t("minutes")}` : "-"}</p>
                 </div>
               </div>
             </Card>
@@ -136,7 +156,7 @@ export default function DriverRideAcceptPage() {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">{t("estimatedEarnings")}</p>
-                    <p className="text-2xl font-bold">350,000 VND</p>
+                    <p className="text-2xl font-bold">{currentRide?.earnings ? `${Number(currentRide.earnings).toLocaleString()} VND` : "-"}</p>
                   </div>
                 </div>
               </div>
@@ -145,7 +165,7 @@ export default function DriverRideAcceptPage() {
             {/* Special Requests */}
             <Card className="p-4 mb-6 bg-gray-50">
               <p className="text-sm font-semibold mb-2">{t("specialRequests")}</p>
-              <p className="text-sm text-gray-700">{t("airconRequired")}、{t("quietRide")}</p>
+              <p className="text-sm text-gray-700">{currentRide?.specialRequest ? currentRide.specialRequest : (currentRide?.preferences && currentRide.preferences.length ? currentRide.preferences.join('、') : `${t("airconRequired")}、${t("quietRide")}`)}</p>
             </Card>
 
             {/* Action Buttons */}

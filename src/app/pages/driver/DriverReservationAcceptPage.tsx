@@ -48,59 +48,79 @@ export default function DriverReservationAcceptPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const todayStr = new Date().toISOString().slice(0, 10);
+  
+  const getLocalTodayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const todayStr = getLocalTodayStr();
+  
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [availableReservations, setAvailableReservations] = useState<Reservation[]>([]);
   const [selectedReservation, setSelectedReservation] =
     useState<Reservation | null>(null);
   const [acceptedReservations, setAcceptedReservations] = useState<Reservation[]>([]);
+  const [declinedReservations, setDeclinedReservations] = useState<string[]>([]);
 
   useEffect(() => {
-    // Fetch pending requests (available reservations)
-    api.getPendingRequests()
-      .then((res) => {
-        const bookings = res || [];
-        const mapped = bookings.map((b) => {
-          const when = b.scheduledAt || b.createdAt;
-          const dateStr = when ? new Date(when).toISOString().slice(0, 10) : "";
-          const timeStr = when ? new Date(when).toISOString().slice(11, 16) : "";
-          let prefs = [];
-          let langs = [];
-          if (b.preferencesJson) {
-            try {
-              const parsed = JSON.parse(b.preferencesJson);
-              if (Array.isArray(parsed.languages)) langs = parsed.languages;
-              if (Array.isArray(parsed.ridePreferences)) prefs = parsed.ridePreferences;
-            } catch {}
-          }
-          return {
-            id: String(b.id),
-            date: dateStr,
-            time: timeStr,
-            customerName: b.user?.fullName || "",
-            customerAvatar: b.user?.avatarUrl || null,
-            customerRating: b.user?.averageRating || 0,
-            pickup: b.pickupAddress,
-            destination: b.destination,
-            distance: b.routeDistanceMeters ? `${Math.round(b.routeDistanceMeters / 1000)} km` : "",
-            duration: b.routeDurationSeconds ? String(Math.round(b.routeDurationSeconds / 60)) : "",
-            earnings: b.estimatedFare ? String(Math.round(b.estimatedFare)) : "",
-            languages: langs,
-            preferences: prefs,
-            specialRequest: null
-          };
-        });
-        setAvailableReservations(mapped);
-      })
-      .catch((err) => console.error("Failed to fetch pending requests:", err));
+    let interval: number;
 
-    // Fetch accepted rides for the driver
-    api.getDriverAcceptedRides()
-      .then((res) => {
-        const list = res || [];
-        setAcceptedReservations(list);
-      })
-      .catch((err) => console.error("Failed to fetch accepted rides:", err));
+    const fetchData = () => {
+      // Fetch pending requests (available reservations)
+      api.getPendingRequests()
+        .then((res) => {
+          const bookings = (res || []).filter((b: any) => b.bookingType === "SCHEDULED");
+          const mapped = bookings.map((b: any) => {
+            const when = b.scheduledAt || b.createdAt;
+            let dateStr = "";
+            let timeStr = "";
+            if (when) {
+              const d = new Date(when);
+              dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+              timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+            }
+            let prefs = [];
+            let langs = [];
+            if (b.preferencesJson) {
+              try {
+                const parsed = JSON.parse(b.preferencesJson);
+                if (Array.isArray(parsed.languages)) langs = parsed.languages;
+                if (Array.isArray(parsed.ridePreferences)) prefs = parsed.ridePreferences;
+              } catch {}
+            }
+            return {
+              id: String(b.id),
+              date: dateStr,
+              time: timeStr,
+              customerName: b.user?.fullName || "",
+              customerAvatar: b.user?.avatarUrl || null,
+              customerRating: b.user?.averageRating || 0,
+              pickup: b.pickupAddress,
+              destination: b.destination,
+              distance: b.routeDistanceMeters ? `${Math.round(b.routeDistanceMeters / 1000)} km` : "",
+              duration: b.routeDurationSeconds ? String(Math.round(b.routeDurationSeconds / 60)) : "",
+              earnings: b.estimatedFare ? String(Math.round(b.estimatedFare)) : "",
+              languages: langs,
+              preferences: prefs,
+              specialRequest: null
+            };
+          });
+          setAvailableReservations(mapped);
+        })
+        .catch((err) => console.error("Failed to fetch pending requests:", err));
+
+      // Fetch accepted rides for the driver
+      api.getDriverAcceptedRides()
+        .then((res) => {
+          const list = res || [];
+          setAcceptedReservations(list);
+        })
+        .catch((err) => console.error("Failed to fetch accepted rides:", err));
+    };
+
+    fetchData();
+    interval = window.setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const getDaysInMonth = (date: Date) => {
@@ -117,9 +137,11 @@ export default function DriverReservationAcceptPage() {
   const { daysInMonth, startingDayOfWeek, year, month } =
     getDaysInMonth(currentDate);
 
-  // filter out reservations already accepted by this driver
+  // filter out reservations already accepted or declined by this driver
   const availableReservationsFiltered = availableReservations.filter(
-    (res) => !acceptedReservations.find((acc) => acc.id === res.id)
+    (res) => 
+      !acceptedReservations.find((acc: any) => String(acc.id) === res.id) &&
+      !declinedReservations.includes(res.id)
   );
 
   const reservationsForSelectedDate = availableReservationsFiltered.filter(
@@ -156,24 +178,46 @@ export default function DriverReservationAcceptPage() {
     setSelectedReservation(null);
   };
 
-  const handleAccept = (reservation: Reservation) => {
-    setAcceptedReservations([
-      ...acceptedReservations,
-      reservation,
-    ]);
-    setSelectedReservation(null);
+  const handleAccept = async (reservation: Reservation) => {
+    try {
+      await api.acceptRide(Number(reservation.id));
+      setAcceptedReservations([
+        ...acceptedReservations,
+        reservation,
+      ]);
+      // remove from available immediately
+      setAvailableReservations((prev) => prev.filter((r) => r.id !== reservation.id));
+      setSelectedReservation(null);
+      navigate("/driver/ride-accept");
+    } catch (error) {
+      console.error(error);
+      const message = error?.message || (error && String(error)) || "Failed to accept reservation.";
+      alert(message.includes("Booking is no longer available") ? "Failed to accept reservation. It might have been taken or canceled." : message);
+    }
   };
 
-  const handleDecline = (reservationId: string) => {
-    setSelectedReservation(null);
+  const handleDecline = async (reservationId: string) => {
+    try {
+      await api.declineRide(Number(reservationId));
+      setSelectedReservation(null);
+      setDeclinedReservations([...declinedReservations, reservationId]);
+    } catch (error) {
+      console.error("Decline failed:", error);
+    }
   };
 
-  const handleCancelAcceptance = (reservationId: string) => {
-    setAcceptedReservations(
-      acceptedReservations.filter(
-        (res) => res.id !== reservationId,
-      ),
-    );
+  const handleCancelAcceptance = async (reservationId: string) => {
+    try {
+      await api.cancelAcceptance(Number(reservationId));
+      setAcceptedReservations(
+        acceptedReservations.filter((res) => res.id !== reservationId),
+      );
+      // refresh available list by removing local accepted reservation so it may reappear via fetch
+      setAvailableReservations((prev) => prev.filter((r) => r.id !== reservationId));
+    } catch (err) {
+      console.error('Failed to cancel acceptance:', err);
+      alert(t('failedToCancelAcceptance') || 'Failed to cancel acceptance');
+    }
   };
 
   const monthNames = [
@@ -475,7 +519,7 @@ export default function DriverReservationAcceptPage() {
                                 </div>
                               )}
 
-                              {/* Contact Buttons *
+                              {/* Contact Buttons */}
                             <div className="flex gap-2 mb-4">
                               <Button variant="outline" size="sm" className="flex-1 gap-2">
                                 <Phone className="h-4 w-4" />

@@ -112,6 +112,14 @@ export default function BookingPage() {
   const currentSuggestions =
     activeField === "pickup" ? pickupSuggestions : destinationSuggestions;
 
+  // Fallback suggestions to show when user hasn't typed yet or API returns none
+  const FALLBACK_SUGGESTIONS: LocationSuggestion[] = [
+    { placeId: "fallback:home", label: "Home", lat: 0, lon: 0 },
+    { placeId: "fallback:work", label: "Work", lat: 0, lon: 0 },
+    { placeId: "fallback:airport", label: "Airport", lat: 0, lon: 0 },
+    { placeId: "fallback:station", label: "Train Station", lat: 0, lon: 0 }
+  ];
+
   const handleGoNext = () => {
     if (!canChooseVehicle) {
       setErrorMessage("Vui lòng chọn điểm đón và điểm đến từ danh sách gợi ý.");
@@ -187,7 +195,11 @@ export default function BookingPage() {
               <BookingStepIndicator currentStep={1} title="乗車地点・行き先を選択" />
               <h3 className="font-semibold mb-3">{t("suggestedDestinations")}</h3>
               <div className="space-y-2">
-                {currentSuggestions.slice(0, 5).map((place, index) => (
+                {(currentSuggestions && currentSuggestions.length > 0
+                  ? currentSuggestions.slice(0, 5)
+                  : (destination.trim() === "" && activeField === "destination") || (pickup.trim() === "" && activeField === "pickup")
+                  ? FALLBACK_SUGGESTIONS
+                  : []).map((place, index) => (
                   <div
                     key={place.placeId || index}
                     onClick={() => {

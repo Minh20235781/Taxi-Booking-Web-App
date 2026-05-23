@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -9,6 +9,7 @@ import { MapPin, Calendar, CreditCard, Download, Mail, Check } from "lucide-reac
 import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft, getBookingFlowDraft } from "../../services/bookingFlow";
 import { calculateFare, formatVnd } from "../../services/pricing";
+import { api } from "../../services/api";
 
 export default function UserBillPage() {
   const navigate = useNavigate();
@@ -16,18 +17,23 @@ export default function UserBillPage() {
   const [email, setEmail] = useState("tanaka@email.com");
   const [emailSent, setEmailSent] = useState(false);
   const draft = getBookingFlowDraft();
-  const pickupText = draft.pickupText || "-";
-  const destinationText = draft.destinationText || "-";
-  const fare = draft.vehicle?.code
+  const [booking, setBooking] = useState<any | null>(null);
+  const pickupText = booking?.pickupAddress || draft.pickupText || "-";
+  const destinationText = booking?.destination || draft.destinationText || "-";
+  const fare = booking?.vehicleClass
+    ? null
+    : draft.vehicle?.code
     ? calculateFare(
         draft.vehicle.code,
         draft.routeDistanceMeters || 0,
         draft.routeDurationSeconds || 0
       )
     : null;
-  const totalAmount = fare ? formatVnd(fare.totalFare) : draft.vehicle?.price || "-";
-  const paymentLabel = draft.paymentMethodLabel || "-";
-  const dateTimeText = draft.reservationDate
+  const totalAmount = booking?.estimatedFare ? formatVnd(booking.estimatedFare) : fare ? formatVnd(fare.totalFare) : draft.vehicle?.price || "-";
+  const paymentLabel = booking?.paymentMethodLabel || draft.paymentMethodLabel || "-";
+  const dateTimeText = booking?.scheduledAt
+    ? `${new Date(booking.scheduledAt).toLocaleDateString()} ${new Date(booking.scheduledAt).toLocaleTimeString().slice(0,5)}`
+    : draft.reservationDate
     ? `${new Date(draft.reservationDate).toLocaleDateString()} ${draft.reservationTime || ""}`
     : draft.reservationTime || "-";
 
@@ -43,6 +49,22 @@ export default function UserBillPage() {
     setEmailSent(true);
     setTimeout(() => setEmailSent(false), 3000);
   };
+
+  useEffect(() => {
+    let mounted = true;
+    const bid = draft.bookingId || sessionStorage.getItem('last_completed_booking_id');
+    if (!bid) return;
+    (async () => {
+      try {
+        const res: any = await api.getBookingWithRide(Number(bid));
+        if (!mounted) return;
+        setBooking(res.booking || res);
+      } catch (err) {
+        console.error("Failed to load booking for bill page", err);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

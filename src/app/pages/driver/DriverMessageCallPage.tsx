@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, ArrowLeft, Send, Star, Languages } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { api } from "../../services/api";
 
 export default function DriverMessageCallPage() {
   const navigate = useNavigate();
@@ -22,6 +23,24 @@ export default function DriverMessageCallPage() {
     { id: 2, sender: "driver", text: "はい、3分で到着します", translated: "Yes, I will arrive in 3 minutes", time: "14:31" },
     { id: 3, sender: "customer", text: "ありがとうございます", translated: "Thank you", time: "14:32" },
   ]);
+  
+  const [currentRide, setCurrentRide] = useState<any | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const rides: any[] = await api.getDriverAcceptedRides();
+        if (!mounted) return;
+        if (Array.isArray(rides) && rides.length > 0) {
+          setCurrentRide(rides[0]);
+        }
+      } catch (err) {
+        console.error("Failed to fetch accepted rides", err);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const handleSendMessage = () => {
     if (message.trim()) {
@@ -54,18 +73,20 @@ export default function DriverMessageCallPage() {
         <div className="p-6 border-b">
           <div className="max-w-4xl mx-auto flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              <AvatarImage src="https://i.pravatar.cc/150?img=33" />
-              <AvatarFallback>田中</AvatarFallback>
+              {currentRide?.customerAvatar ? (
+                <AvatarImage src={currentRide.customerAvatar} />
+              ) : null}
+              <AvatarFallback>{currentRide?.customerName ? currentRide.customerName.split(" ")[0] : "?"}</AvatarFallback>
             </Avatar>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-bold text-lg">田中 太郎</h3>
+                <h3 className="font-bold text-lg">{currentRide?.customerName || t("customer")}</h3>
                 <div className="flex items-center gap-1">
                   <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-semibold">4.8</span>
+                  <span className="font-semibold">{currentRide?.customerRating ?? ""}</span>
                 </div>
               </div>
-              <p className="text-gray-600">お客様</p>
+              <p className="text-gray-600">{t("customer")}</p>
             </div>
           </div>
         </div>
@@ -158,11 +179,13 @@ export default function DriverMessageCallPage() {
               <div className="max-w-md w-full p-6">
                 <Card className="p-8 text-center">
                   <Avatar className="h-32 w-32 mx-auto mb-6">
-                    <AvatarImage src="https://i.pravatar.cc/150?img=33" />
-                    <AvatarFallback>田中</AvatarFallback>
+                    {currentRide?.customerAvatar ? (
+                      <AvatarImage src={currentRide.customerAvatar} />
+                    ) : null}
+                    <AvatarFallback>{currentRide?.customerName ? currentRide.customerName.split(" ")[0] : "?"}</AvatarFallback>
                   </Avatar>
                   
-                  <h2 className="text-2xl font-bold mb-2">田中 太郎</h2>
+                  <h2 className="text-2xl font-bold mb-2">{currentRide?.customerName || t("customer")}</h2>
                   <p className="text-gray-600 mb-8">
                     {isCalling ? "通話中..." : "タップして通話を開始"}
                   </p>
@@ -214,10 +237,10 @@ export default function DriverMessageCallPage() {
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
                       <Avatar className="h-32 w-32 mx-auto mb-6">
-                        <AvatarImage src="https://i.pravatar.cc/150?img=33" />
-                        <AvatarFallback>田中</AvatarFallback>
+                        {currentRide?.customerAvatar ? <AvatarImage src={currentRide.customerAvatar} /> : null}
+                        <AvatarFallback>{currentRide?.customerName ? currentRide.customerName.split(" ")[0] : "?"}</AvatarFallback>
                       </Avatar>
-                      <h2 className="text-2xl font-bold mb-2 text-white">田中 太郎</h2>
+                      <h2 className="text-2xl font-bold mb-2 text-white">{currentRide?.customerName || "田中 太郎"}</h2>
                       <p className="text-gray-400 mb-8">ビデオ通話を開始</p>
                       <Button
                         onClick={() => setIsCalling(true)}
@@ -233,10 +256,10 @@ export default function DriverMessageCallPage() {
                     <div className="w-full h-full bg-gray-800 flex items-center justify-center">
                       <div className="text-center">
                         <Avatar className="h-48 w-48 mx-auto mb-4">
-                          <AvatarImage src="https://i.pravatar.cc/150?img=33" />
-                          <AvatarFallback>田中</AvatarFallback>
+                          {currentRide?.customerAvatar ? <AvatarImage src={currentRide.customerAvatar} /> : null}
+                          <AvatarFallback>{currentRide?.customerName ? currentRide.customerName.split(" ")[0] : "?"}</AvatarFallback>
                         </Avatar>
-                        <p className="text-white text-lg">田中 太郎</p>
+                        <p className="text-white text-lg">{currentRide?.customerName || t("customer")}</p>
                       </div>
                     </div>
 

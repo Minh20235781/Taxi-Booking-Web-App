@@ -1,4 +1,6 @@
 import { useNavigate } from "react-router";
+import { useEffect, useState } from "react";
+import { api } from "../../services/api";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -20,6 +22,13 @@ import { useLanguage } from "../../contexts/LanguageContext";
 export default function UserProfilePage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    api.me()
+      .then((res: any) => setUser(res.user || res))
+      .catch((err) => console.error("Failed to load user:", err));
+  }, []);
 
   const menuItems = [
     {
@@ -71,19 +80,19 @@ export default function UserProfilePage() {
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-6">
                 <Avatar className="h-24 w-24">
-                  <AvatarImage src="https://i.pravatar.cc/150?img=33" />
-                  <AvatarFallback>田中</AvatarFallback>
+                  <AvatarImage src={user?.avatarUrl || "https://i.pravatar.cc/150?img=33"} />
+                  <AvatarFallback>{user?.fullName ? user.fullName.slice(0,2) : "顧客"}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <h1 className="text-2xl font-bold mb-2">田中 太郎</h1>
+                  <h1 className="text-2xl font-bold mb-2">{user?.fullName || "—"}</h1>
                   <div className="space-y-1 text-gray-600">
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4" />
-                      <span>tanaka@email.com</span>
+                      <span>{user?.email || "-"}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Phone className="h-4 w-4" />
-                      <span>+84 123 456 789</span>
+                      <span>{user?.phone || "-"}</span>
                     </div>
                   </div>
                 </div>

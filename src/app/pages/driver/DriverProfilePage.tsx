@@ -99,24 +99,7 @@ export default function DriverProfilePage() {
       description: t("checkCustomerRatings"),
       action: () => {},
     },
-    {
-      icon: Bell,
-      title: t("notificationSettings"),
-      description: t("pushEmailSettings"),
-      action: () => {},
-    },
-    {
-      icon: Shield,
-      title: t("privacySecurity"),
-      description: t("accountSecuritySettings"),
-      action: () => {},
-    },
-    {
-      icon: HelpCircle,
-      title: t("helpSupport"),
-      description: t("faqContact"),
-      action: () => {},
-    },
+    // Removed Notification / Privacy / Help quick links per product request
   ];
 
   if (loading) {

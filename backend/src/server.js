@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 import { PrismaClient } from "@prisma/client";
 import {
   fetchNominatimSuggestions,
@@ -22,11 +23,52 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const JWT_SECRET = process.env.JWT_SECRET || "dev_jwt_secret_change_me";
 
+const DEFAULT_VEHICLE_CLASSES = [
+  {
+    code: "economy",
+    name: "Economy",
+    baseFare: 20000,
+    pricePerKm: 9000,
+    pricePerMinute: 300,
+    maxCapacity: 4
+  },
+  {
+    code: "comfort",
+    name: "Comfort",
+    baseFare: 30000,
+    pricePerKm: 12000,
+    pricePerMinute: 400,
+    maxCapacity: 4
+  },
+  {
+    code: "premium",
+    name: "Premium",
+    baseFare: 50000,
+    pricePerKm: 16000,
+    pricePerMinute: 600,
+    maxCapacity: 4
+  }
+];
+
 app.use(cors());
 
 // SỬA LỖI 2: Tăng giới hạn dung lượng nhận dữ liệu lên 10MB để thoải mái nhận chuỗi ảnh Base64 từ Frontend
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
+
+// Cấu hình multer cho upload ảnh
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Invalid file type"));
+    }
+  }
+});
 
 const modelMap = {
   users: "user",
@@ -56,6 +98,18 @@ function signToken(user) {
     {
       expiresIn: "7d"
     }
+  );
+}
+
+async function ensureDefaultVehicleClasses() {
+  await Promise.all(
+    DEFAULT_VEHICLE_CLASSES.map((vehicleClass) =>
+      prisma.vehicleClass.upsert({
+        where: { code: vehicleClass.code },
+        update: vehicleClass,
+        create: vehicleClass
+      })
+    )
   );
 }
 
@@ -136,6 +190,29 @@ app.get("/auth/me", authRequired, async (req, res) => {
     return res.status(404).json({ message: "User not found" });
   }
   return res.json({ user: safeUser(user) });
+});
+
+// Update user profile (for regular users)
+app.put("/user/profile", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const data = req.body || {};
+  try {
+    const allowed = {
+      fullName: data.fullName,
+      email: data.email,
+      phone: data.phone,
+      address: data.address,
+      city: data.city,
+      country: data.country,
+      avatarUrl: data.avatarUrl
+    };
+
+    const updated = await prisma.user.update({ where: { id: userId }, data: allowed });
+    return res.json({ user: safeUser(updated) });
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 app.get("/locations/suggest", async (req, res) => {
@@ -292,41 +369,85 @@ app.post("/bookings/create-flow", authRequired, async (req, res) => {
   });
 });
 
-app.put("/driver/profile", authRequired, async (req, res) => {
+app.put("/driver/profile", authRequired, upload.fields([
+  { name: 'vehiclePhoto', maxCount: 1 },
+  { name: 'idCardFront', maxCount: 1 },
+  { name: 'idCardBack', maxCount: 1 },
+  { name: 'licensePhoto', maxCount: 1 },
+  { name: 'languageCertification', maxCount: 1 }
+]), async (req, res) => {
   const userId = Number(req.auth.sub);
   const data = req.body;
 
   try {
+    // Parse JSON fields từ FormData
+    let userDataToUpdate = null;
+    if (data.user) {
+      try {
+        userDataToUpdate = JSON.parse(data.user);
+      } catch (e) {
+        userDataToUpdate = data.user;
+      }
+    }
+
+    // Hàm chuyển file sang base64 URL
+    const fileToBase64 = (file) => {
+      if (!file) return null;
+      const base64 = file.buffer.toString('base64');
+      const mimeType = file.mimetype;
+      return `data:${mimeType};base64,${base64}`;
+    };
+
+    // Parse languages field nếu nó là JSON string
+    let languagesValue = data.languages;
+    if (languagesValue && typeof languagesValue === 'string') {
+      try {
+        languagesValue = JSON.stringify(JSON.parse(languagesValue));
+      } catch (e) {
+        // Giữ nguyên nếu không phải JSON
+      }
+    }
+
+    const updateData = {
+      licenseNumber: data.licenseNumber,
+      vehiclePlate: data.vehiclePlate,
+      vehicleModel: data.vehicleModel,
+      vehicleYear: data.vehicleYear,
+      vehicleColor: data.vehicleColor,
+      vehiclePhotoUrl: data.vehiclePhotoUrl || fileToBase64(req.files?.vehiclePhoto?.[0]),
+      identificationNumber: data.identificationNumber,
+      idCardFrontUrl: data.idCardFrontUrl || fileToBase64(req.files?.idCardFront?.[0]),
+      idCardBackUrl: data.idCardBackUrl || fileToBase64(req.files?.idCardBack?.[0]),
+      licensePhotoUrl: data.licensePhotoUrl || fileToBase64(req.files?.licensePhoto?.[0]),
+      languageCertificationUrl: data.languageCertificationUrl || fileToBase64(req.files?.languageCertification?.[0]),
+      languages: languagesValue,
+      bankName: data.bankName,
+      accountNumber: data.accountNumber,
+      accountHolderName: data.accountHolderName
+    };
+
+    // Chỉ thêm isOnline nếu nó được gửi và có giá trị
+    if (data.isOnline !== undefined && data.isOnline !== null) {
+      updateData.isOnline = data.isOnline === 'true' || data.isOnline === true;
+    }
+
     const driverProfile = await prisma.driverProfile.update({
       where: { userId },
-      data: {
-        licenseNumber: data.licenseNumber,
-        vehiclePlate: data.vehiclePlate,
-        vehicleModel: data.vehicleModel,
-        vehicleYear: data.vehicleYear,
-        vehiclePhotoUrl: data.vehiclePhotoUrl,
-        vehicleColor: data.vehicleColor,
-        identificationNumber: data.identificationNumber,
-        languages: data.languages,
-        bankName: data.bankName,
-        accountNumber: data.accountNumber,
-        accountHolderName: data.accountHolderName,
-        isOnline: data.isOnline
-      }
+      data: updateData
     });
 
-    if (data.user) {
+    if (userDataToUpdate) {
       // SỬA LỖI 1: Thay đổi 'name' thành 'fullName' để khớp hoàn chỉnh dữ liệu Prisma Schema
       await prisma.user.update({
         where: { id: userId },
         data: {
-          fullName: data.user.fullName || data.user.name, 
-          email: data.user.email,
-          phone: data.user.phone,
-          address: data.user.address,                     // THÊM: Lưu địa chỉ vào DB
-          city: data.user.city,                           // THÊM: Lưu thành phố vào DB
-          country: data.user.country,
-          avatarUrl: data.user.avatarUrl
+          fullName: userDataToUpdate.fullName || userDataToUpdate.name, 
+          email: userDataToUpdate.email,
+          phone: userDataToUpdate.phone,
+          address: userDataToUpdate.address,                     // THÊM: Lưu địa chỉ vào DB
+          city: userDataToUpdate.city,                           // THÊM: Lưu thành phố vào DB
+          country: userDataToUpdate.country,
+          avatarUrl: userDataToUpdate.avatarUrl
         }
       });
     }
@@ -470,7 +591,8 @@ app.post("/driver/accept-ride/:bookingId", authRequired, async (req, res) => {
       return res.status(404).json({ message: "Booking not found." });
     }
 
-    if (booking.status !== "REQUESTED") {
+    // Allow accepting either instant REQUESTED bookings or SCHEDULED bookings
+    if (!["REQUESTED", "SCHEDULED"].includes(booking.status)) {
       return res.status(400).json({ message: "Booking is no longer available." });
     }
 
@@ -492,6 +614,57 @@ app.post("/driver/accept-ride/:bookingId", authRequired, async (req, res) => {
     res.json({ message: "Ride accepted successfully.", booking: updatedBooking, ride });
   } catch (error) {
     console.error("Error accepting ride:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+app.post("/driver/complete-ride/:bookingId", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const bookingId = Number(req.params.bookingId);
+  try {
+    const driverProfile = await prisma.driverProfile.findUnique({ where: { userId } });
+    if (!driverProfile) {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+
+    // Load booking and its user so we can snapshot customer profile
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId }, include: { user: true } });
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    const customerSnapshot = booking.user
+      ? {
+          id: booking.user.id,
+          fullName: booking.user.fullName,
+          email: booking.user.email,
+          phone: booking.user.phone,
+          avatarUrl: booking.user.avatarUrl
+        }
+      : null;
+
+    const updatedBooking = await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: "COMPLETED", customerSnapshotJson: customerSnapshot ? JSON.stringify(customerSnapshot) : null }
+    });
+
+    const ride = await prisma.ride.findFirst({
+      where: { bookingId, driverProfileId: driverProfile.id }
+    });
+
+    if (ride) {
+      await prisma.ride.update({
+        where: { id: ride.id },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date()
+        }
+      });
+    }
+
+    res.json({ message: "Ride completed successfully.", booking: updatedBooking });
+  } catch (error) {
+    console.error("Error completing ride:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -538,8 +711,16 @@ app.use((error, _req, res, _next) => {
   return res.status(500).json({ message: "Internal server error" });
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running at http://localhost:${PORT}`);
+async function startServer() {
+  await ensureDefaultVehicleClasses();
+  app.listen(PORT, () => {
+    console.log(`Backend running at http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error("Failed to start backend:", error);
+  process.exit(1);
 });
 
 app.post("/driver/decline-ride/:bookingId", authRequired, async (req, res) => {
@@ -751,5 +932,92 @@ app.get("/driver/accepted-rides", authRequired, async (req, res) => {
   } catch (error) {
     console.error("Error fetching accepted rides:", error);
     res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Driver cancels their acceptance for a booking (unassign driver, remove ride)
+app.post("/driver/cancel-acceptance/:bookingId", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const bookingId = Number(req.params.bookingId);
+  try {
+    const driverProfile = await prisma.driverProfile.findUnique({ where: { userId } });
+    if (!driverProfile) return res.status(404).json({ message: 'Driver profile not found.' });
+
+    const ride = await prisma.ride.findFirst({ where: { bookingId, driverProfileId: driverProfile.id } });
+    if (!ride) return res.status(404).json({ message: 'No accepted ride found for this driver.' });
+
+    // delete the ride and revert booking status so others can accept
+    await prisma.ride.delete({ where: { id: ride.id } });
+    await prisma.booking.update({ where: { id: bookingId }, data: { status: 'REQUESTED' } });
+
+    return res.json({ message: 'Acceptance cancelled.' });
+  } catch (error) {
+    console.error('Error cancelling acceptance:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Submit rating for a ride (by the rider). Accepts { score, comment, compliments?, tipAmount? }
+app.post("/rides/:rideId/rating", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const rideId = Number(req.params.rideId);
+  const { score, comment, compliments, tipAmount } = req.body || {};
+
+  if (!score || Number(score) < 1 || Number(score) > 5) {
+    return res.status(400).json({ message: "score must be an integer between 1 and 5" });
+  }
+
+  try {
+    const ride = await prisma.ride.findUnique({ where: { id: rideId } });
+    if (!ride) return res.status(404).json({ message: "Ride not found" });
+
+    if (ride.riderId !== userId) {
+      return res.status(403).json({ message: "Only the rider can submit a rating for this ride" });
+    }
+
+    // Create rating (one-per-ride constraint enforced by schema)
+    const rating = await prisma.rating.create({
+      data: {
+        rideId,
+        userId,
+        score: Number(score),
+        comment: comment || null
+      }
+    });
+
+    // Handle tip if provided: add to ride.finalFare and to payment if exists or create a payment record
+    const tip = tipAmount ? Number(tipAmount) : 0;
+    if (tip && !Number.isNaN(tip) && tip > 0) {
+      const currentFinal = ride.finalFare || 0;
+      await prisma.ride.update({ where: { id: rideId }, data: { finalFare: currentFinal + tip } });
+
+      // Update or create payment
+      const existingPayment = await prisma.payment.findUnique({ where: { rideId } }).catch(() => null);
+      if (existingPayment) {
+        await prisma.payment.update({ where: { id: existingPayment.id }, data: { amount: existingPayment.amount + tip } });
+      } else {
+        await prisma.payment.create({
+          data: {
+            rideId,
+            method: "TIP",
+            amount: tip,
+            status: "PAID",
+            paidAt: new Date()
+          }
+        });
+      }
+    }
+
+    // Recompute driver average rating if driver assigned
+    if (ride.driverProfileId) {
+      const allRatings = await prisma.rating.findMany({ where: { ride: { driverProfileId: ride.driverProfileId } } });
+      const avg = allRatings.length ? allRatings.reduce((s, r) => s + r.score, 0) / allRatings.length : null;
+      await prisma.driverProfile.update({ where: { id: ride.driverProfileId }, data: { averageRating: avg } });
+    }
+
+    return res.json({ rating });
+  } catch (error) {
+    console.error("Error submitting rating:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });

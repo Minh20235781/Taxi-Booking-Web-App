@@ -43,9 +43,11 @@ export default function DriverHomepage() {
     setIsOnline(checked);
     if (!checked) setPendingRequests([]);
     try {
+      // Chỉ gửi isOnline, không gửi toàn bộ object để tránh lỗi update
       await api.updateDriverProfile({ isOnline: checked });
+      setDriverProfile((prev: any) => ({ ...prev, isOnline: checked }));
     } catch (error) {
-      console.error(error);
+      console.error("Toggle error:", error);
       setIsOnline(!checked);
     }
   };
@@ -145,7 +147,7 @@ const formatEarnings = (value: any) => {
           </Card>
 
           {/* New Ride Requests */}
-          {isOnline && pendingRequests.filter(req => !declinedRides.includes(req.id)).map(request => (
+          {isOnline && pendingRequests.filter(req => !declinedRides.includes(req.id) && req.bookingType !== "SCHEDULED").map(request => (
             <Card key={request.id} className="p-6 mb-6 bg-green-50 border-green-200 animate-pulse">
               <div className="flex items-center justify-between">
                 <div>
@@ -153,7 +155,7 @@ const formatEarnings = (value: any) => {
                     {t("newRideRequest")}
                   </h3>
                   <p className="inline-flex items-center rounded-full bg-white/80 px-2 py-1 text-xs font-semibold text-green-700 border border-green-200 mb-2">
-                    {request.bookingType === "SCHEDULED" ? "Scheduled Request" : "Instant Request"}
+                    Instant Request
                   </p>
                   <p className="text-gray-600 mb-1">
                     {t("pickup")}: {request.pickupAddress}
