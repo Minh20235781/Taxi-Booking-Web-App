@@ -25,18 +25,38 @@ export default function DriverHomepage() {
   
   // State bổ sung để quản lý thông tin đánh giá sao động từ DB
   const [driverProfile, setDriverProfile] = useState<any>(null);
+  const [recentRatings, setRecentRatings] = useState<{ id: number; score: number; comment: string | null; createdAt: string; riderName: string | null; riderAvatar: string | null }[]>([]);
+
+  const loadRatings = () => {
+    api.getDriverRatings(5)
+      .then((res) => setRecentRatings(res.ratings || []))
+      .catch((err) => console.error("Failed to fetch driver ratings:", err));
+  };
 
   useEffect(() => {
     api.getDriverProfile()
       .then((response) => {
         const data = response.data || response;
         setDriverProfile(data?.driverProfile || data);
-        
+
         // Cập nhật trạng thái online
         const onlineStatus = data?.driverProfile?.isOnline ?? data?.isOnline;
         setIsOnline(!!onlineStatus);
       })
       .catch(console.error);
+
+    loadRatings();
+
+    // Refresh ratings when the driver comes back to this tab (e.g. after a ride got rated).
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadRatings();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", loadRatings);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", loadRatings);
+    };
   }, []);
 
   const handleToggleOnline = async (checked: boolean) => {
@@ -316,30 +336,32 @@ const formatEarnings = (value: any) => {
             </div>
           </div>
 
-          {/* Recent Ratings (Tạm thời để cứng hoặc xử lý lấy từ model Rating sau này) */}
+          {/* Recent Ratings - fetched from /driver/ratings */}
           <Card className="p-6">
-            <h3 className="font-bold text-lg mb-4">
-              {t("recentRatings")}
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-start gap-4">
-                <div className="flex items-center gap-1">
-                  <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                  <span className="font-bold">5.0</span>
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold mb-1">
-                    田中 太郎
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    「とても親切で、時間通りに到着しました。ありがとうございました！」
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    2026-03-27
-                  </p>
-                </div>
+            <h3 className="font-bold text-lg mb-4">{t("recentRatings")}</h3>
+            {recentRatings.length === 0 ? (
+              <p className="text-sm text-gray-500">{t("noRatingsYet")}</p>
+            ) : (
+              <div className="space-y-4">
+                {recentRatings.map((r) => (
+                  <div key={r.id} className="flex items-start gap-4 pb-4 border-b last:border-b-0 last:pb-0">
+                    <div className="flex items-center gap-1 min-w-[3rem]">
+                      <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
+                      <span className="font-bold">{r.score.toFixed(1)}</span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold mb-1">{r.riderName || t("anonymousRider")}</p>
+                      {r.comment ? (
+                        <p className="text-sm text-gray-600">「{r.comment}」</p>
+                      ) : null}
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(r.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
           </Card>
         </div>
       </div>

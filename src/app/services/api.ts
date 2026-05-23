@@ -140,6 +140,11 @@ export const api = {
   getBookingWithRide: (bookingId: number) => request(`/bookings/with-ride/${bookingId}`),
   submitRating: (rideId: number, payload: { score: number; comment?: string; compliments?: string[]; tipAmount?: number }) =>
     request(`/rides/${rideId}/rating`, { method: "POST", body: JSON.stringify(payload) }),
+  getDriverRatings: (limit = 10): Promise<{
+    averageRating: number | null;
+    total: number;
+    ratings: { id: number; rideId: number; score: number; comment: string | null; createdAt: string; riderName: string | null; riderAvatar: string | null }[];
+  }> => request(`/driver/ratings?limit=${limit}`),
   getDriverAcceptedRides: () => request(`/driver/accepted-rides`),
   getRecentBookings: () => request(`/bookings/my-recent`),
   getCompletedRides: () => request(`/bookings/my-completed`),

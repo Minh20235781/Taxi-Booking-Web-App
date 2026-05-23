@@ -28,6 +28,7 @@ export default function DriverProfilePage() {
   // State lưu thông tin profile từ database
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [ratings, setRatings] = useState<{ id: number; score: number; comment: string | null; createdAt: string; riderName: string | null; riderAvatar: string | null }[]>([]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -43,6 +44,23 @@ export default function DriverProfilePage() {
       }
     };
     fetchProfile();
+
+    const loadRatings = () => {
+      api.getDriverRatings(10)
+        .then((res) => setRatings(res.ratings || []))
+        .catch((err) => console.error("Failed to fetch driver ratings:", err));
+    };
+    loadRatings();
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadRatings();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", loadRatings);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", loadRatings);
+    };
   }, []);
 
   // Trích xuất dữ liệu an toàn bằng Optional Chaining (?.), nếu không có sẽ để chuỗi rỗng ""
@@ -174,6 +192,46 @@ export default function DriverProfilePage() {
               <p className="text-gray-600">{t("driverExperience")}</p>
             </Card>
           </div>
+
+          {/* Recent Ratings from riders */}
+          <Card className="p-6 mb-6">
+            <h3 className="font-semibold text-lg mb-4">{t("recentRatings")}</h3>
+            {ratings.length === 0 ? (
+              <p className="text-sm text-gray-500">{t("noRatingsYet")}</p>
+            ) : (
+              <div className="space-y-4">
+                {ratings.map((r) => (
+                  <div key={r.id} className="flex gap-3 pb-4 border-b last:border-b-0 last:pb-0">
+                    <Avatar className="h-10 w-10">
+                      {r.riderAvatar ? <AvatarImage src={r.riderAvatar} /> : null}
+                      <AvatarFallback>
+                        {(r.riderName || "?").trim().split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "?"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium">{r.riderName || t("anonymousRider")}</p>
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`h-4 w-4 ${s <= r.score ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      {r.comment ? (
+                        <p className="text-sm text-gray-600 mt-1">{r.comment}</p>
+                      ) : null}
+                      <p className="text-xs text-gray-400 mt-1">
+                        {new Date(r.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
 
           {/* Achievements */}
           <Card className="p-6 mb-6">

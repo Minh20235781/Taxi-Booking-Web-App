@@ -680,6 +680,43 @@ app.get("/driver/profile", authRequired, async (req, res) => {
   }
 });
 
+// Get ratings received by the authenticated driver.
+// Returns recent ratings together with the rider name so the driver can read feedback.
+app.get("/driver/ratings", authRequired, async (req, res) => {
+  try {
+    const userId = Number(req.auth.sub);
+    const driverProfile = await prisma.driverProfile.findUnique({ where: { userId } });
+    if (!driverProfile) {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+
+    const limit = Math.min(Number(req.query.limit) || 10, 50);
+    const ratings = await prisma.rating.findMany({
+      where: { ride: { driverProfileId: driverProfile.id } },
+      include: { user: { select: { fullName: true, avatarUrl: true } } },
+      orderBy: { createdAt: "desc" },
+      take: limit
+    });
+
+    return res.json({
+      averageRating: driverProfile.averageRating,
+      total: ratings.length,
+      ratings: ratings.map((r) => ({
+        id: r.id,
+        rideId: r.rideId,
+        score: r.score,
+        comment: r.comment,
+        createdAt: r.createdAt,
+        riderName: r.user?.fullName || null,
+        riderAvatar: r.user?.avatarUrl || null
+      }))
+    });
+  } catch (error) {
+    console.error("Error fetching driver ratings:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 app.get("/driver/pending-requests", authRequired, async (req, res) => {
   try {
     const userId = Number(req.auth.sub);

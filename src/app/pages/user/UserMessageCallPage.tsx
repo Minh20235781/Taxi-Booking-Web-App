@@ -10,6 +10,7 @@ import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, ArrowLeft, Send, Star, L
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api } from "../../services/api";
 import { getBookingFlowDraft } from "../../services/bookingFlow";
+import { translateViJa } from "../../services/translate";
 
 export default function UserMessageCallPage() {
   const navigate = useNavigate();
@@ -19,19 +20,57 @@ export default function UserMessageCallPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isMicEnabled, setIsMicEnabled] = useState(true);
   const [showTranslation, setShowTranslation] = useState(false);
-  const [messages, setMessages] = useState([
-    { id: 1, sender: "driver", text: "こんにちは、もうすぐ到着します", translated: "Hello, I will arrive soon", time: "14:30" },
-    { id: 2, sender: "user", text: "了解しました", translated: "Understood", time: "14:31" },
-    { id: 3, sender: "driver", text: "建物の前に停車しています", translated: "I am parked in front of the building", time: "14:35" },
+  const [isTranslating, setIsTranslating] = useState(false);
+  type ChatMessage = { id: number; sender: "user" | "driver"; text: string; translated: string | null; time: string };
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { id: 1, sender: "driver", text: "こんにちは、もうすぐ到着します", translated: null, time: "14:30" },
+    { id: 2, sender: "user", text: "Tôi đã hiểu, cảm ơn anh", translated: null, time: "14:31" },
+    { id: 3, sender: "driver", text: "建物の前に停車しています", translated: null, time: "14:35" },
   ]);
 
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      setMessages([
-        ...messages,
-        { id: messages.length + 1, sender: "user", text: message, translated: "[Auto-translated]", time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) },
-      ]);
-      setMessage("");
+  const ensureTranslations = async (list: ChatMessage[]): Promise<ChatMessage[]> => {
+    const pending = list.filter((m) => !m.translated);
+    if (pending.length === 0) return list;
+    const translatedTexts = await Promise.all(pending.map((m) => translateViJa(m.text)));
+    const lookup = new Map<number, string>();
+    pending.forEach((m, idx) => lookup.set(m.id, translatedTexts[idx]));
+    return list.map((m) => (lookup.has(m.id) ? { ...m, translated: lookup.get(m.id) ?? null } : m));
+  };
+
+  const handleToggleTranslation = async () => {
+    const next = !showTranslation;
+    setShowTranslation(next);
+    if (next) {
+      setIsTranslating(true);
+      try {
+        const updated = await ensureTranslations(messages);
+        setMessages(updated);
+      } finally {
+        setIsTranslating(false);
+      }
+    }
+  };
+
+  const handleSendMessage = async () => {
+    const body = message.trim();
+    if (!body) return;
+    const newMsg: ChatMessage = {
+      id: messages.length + 1,
+      sender: "user",
+      text: body,
+      translated: null,
+      time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
+    };
+    setMessages((prev) => [...prev, newMsg]);
+    setMessage("");
+    if (showTranslation) {
+      setIsTranslating(true);
+      try {
+        const translated = await translateViJa(body);
+        setMessages((prev) => prev.map((m) => (m.id === newMsg.id ? { ...m, translated } : m)));
+      } finally {
+        setIsTranslating(false);
+      }
     }
   };
 
@@ -62,7 +101,7 @@ export default function UserMessageCallPage() {
             className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
-            乗車画面に戻る
+            {t("backToRide")}
           </Button>
         </div>
 
@@ -104,7 +143,7 @@ export default function UserMessageCallPage() {
               <div className="max-w-4xl mx-auto px-6">
                 <TabsList className="grid w-96 grid-cols-3">
                   <TabsTrigger value="message">{t("message")}</TabsTrigger>
-                  <TabsTrigger value="call">通話</TabsTrigger>
+                  <TabsTrigger value="call">{t("call")}</TabsTrigger>
                   <TabsTrigger value="video">{t("videoCall")}</TabsTrigger>
                 </TabsList>
               </div>
@@ -119,11 +158,12 @@ export default function UserMessageCallPage() {
                     <Button
                       variant={showTranslation ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setShowTranslation(!showTranslation)}
+                      onClick={handleToggleTranslation}
+                      disabled={isTranslating}
                       className="gap-2"
                     >
                       <Languages className="h-4 w-4" />
-                      {t("translate")}
+                      {isTranslating ? t("translating") : t("translate")}
                     </Button>
                   </div>
 
@@ -142,10 +182,10 @@ export default function UserMessageCallPage() {
                         >
                           <p>{msg.text}</p>
                           {showTranslation && (
-                            <p className={`text-sm mt-2 pt-2 border-t ${
+                            <p className={`text-sm mt-2 pt-2 border-t italic ${
                               msg.sender === "user" ? "border-gray-700" : "border-gray-300"
                             }`}>
-                              {msg.translated}
+                              {msg.translated ?? t("translating")}
                             </p>
                           )}
                           <p className={`text-xs mt-1 ${
@@ -167,7 +207,7 @@ export default function UserMessageCallPage() {
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                    placeholder="メッセージを入力..."
+                    placeholder={t("typeMessage")}
                     className="h-12"
                   />
                   <Button
