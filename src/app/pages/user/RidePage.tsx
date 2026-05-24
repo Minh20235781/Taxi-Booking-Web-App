@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { Phone, MessageCircle, Star, MapPin, Navigation } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft, getBookingFlowDraft, updateBookingFlowDraft } from "../../services/bookingFlow";
-import type { LocationSuggestion } from "../../services/api";
+import type { LocationSuggestion, PaymentMethodCode } from "../../services/api";
 import { calculateFare, formatVnd } from "../../services/pricing";
 import { api } from "../../services/api";
 
@@ -18,6 +18,12 @@ const LANGUAGE_LABELS: Record<string, string> = {
   english: "English",
   vietnamese: "Vietnamese"
 };
+
+function toPaymentMethodCode(methodId?: string): PaymentMethodCode {
+  if (methodId === "momo") return "MOMO";
+  if (methodId === "cash") return "CASH";
+  return "CARD";
+}
 
 function parseLanguageList(value: unknown) {
   if (!value) return [] as string[];
@@ -72,11 +78,19 @@ export default function RidePage() {
   // Simulate ride completion after some time (for demo)
   const handleCompleteRide = async () => {
     if (draft.bookingId) {
-       try {
-         await api.completeRide(draft.bookingId as number);
-       } catch (error) {
-         console.error("Failed to complete ride on server", error);
-       }
+      try {
+        await api.confirmBookingPayment(draft.bookingId, {
+          method: toPaymentMethodCode(draft.paymentMethodId),
+          label: draft.paymentMethodLabel
+        });
+        try {
+          sessionStorage.setItem("last_completed_booking_id", String(draft.bookingId));
+        } catch {
+          /* ignore */
+        }
+      } catch (error) {
+        console.error("Failed to confirm payment on server", error);
+      }
     }
     setIsCompleted(true);
     // Navigate to bill page
