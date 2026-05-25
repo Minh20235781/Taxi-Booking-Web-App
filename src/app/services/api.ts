@@ -149,6 +149,7 @@ export const api = {
   getRecentBookings: () => request(`/bookings/my-recent`),
   getCompletedRides: () => request(`/bookings/my-completed`),
   getUpcomingRides: () => request(`/bookings/my-upcoming`),
+  cancelBooking: (bookingId: number) => request(`/bookings/${bookingId}/cancel`, { method: "POST" }),
   updateBookingPaymentMethod: (
     bookingId: number,
     payload: { method: PaymentMethodCode; label?: string }

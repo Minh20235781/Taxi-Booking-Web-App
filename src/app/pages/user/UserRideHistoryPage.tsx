@@ -7,7 +7,7 @@ import { Input } from "../../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { MapPin, Calendar, Star, Search, Download } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { clearBookingFlowDraft } from "../../services/bookingFlow";
+import { clearBookingFlowDraft, getRecentCompletedBooking, updateBookingFlowDraft } from "../../services/bookingFlow";
 import { api } from "../../services/api";
 
 export default function UserRideHistoryPage() {
@@ -25,7 +25,38 @@ export default function UserRideHistoryPage() {
           api.getCompletedRides().catch(() => []),
           api.getUpcomingRides().catch(() => [])
         ]);
-        setCompletedRides(Array.isArray(completed) ? completed : []);
+        const completedList = Array.isArray(completed) ? completed : [];
+        const recentCompletedBooking = getRecentCompletedBooking<any>();
+
+        if (recentCompletedBooking?.status === "COMPLETED" || recentCompletedBooking?.ride?.status === "COMPLETED") {
+          const when = recentCompletedBooking.scheduledAt || recentCompletedBooking.createdAt;
+          const dateObj = when ? new Date(when) : new Date();
+          const dateStr = dateObj.toISOString().slice(0, 10);
+          const timeStr = dateObj.toTimeString().slice(0, 5);
+          const fareValue = recentCompletedBooking.estimatedFare
+            ? `${Math.round(Number(recentCompletedBooking.estimatedFare)).toLocaleString()} VND`
+            : "-";
+          const cachedRide = {
+            id: recentCompletedBooking.id,
+            driver: recentCompletedBooking.ride?.driver?.user?.fullName || "Driver",
+            from: recentCompletedBooking.pickupAddress || "-",
+            to: recentCompletedBooking.destination || "-",
+            pickupLat: recentCompletedBooking.pickupLat,
+            pickupLng: recentCompletedBooking.pickupLng,
+            destinationLat: recentCompletedBooking.destinationLat,
+            destinationLng: recentCompletedBooking.destinationLng,
+            date: dateStr,
+            time: timeStr,
+            price: fareValue,
+            rating: recentCompletedBooking.ride?.driver?.averageRating || 5,
+            status: recentCompletedBooking.status || "COMPLETED"
+          };
+
+          const merged = [cachedRide, ...completedList.filter((ride: any) => ride.id !== cachedRide.id)];
+          setCompletedRides(merged);
+        } else {
+          setCompletedRides(completedList);
+        }
         setUpcomingRides(Array.isArray(upcoming) ? upcoming : []);
       } catch (error) {
         console.error("Error fetching rides:", error);
@@ -36,9 +67,59 @@ export default function UserRideHistoryPage() {
     fetchRideData();
   }, []);
 
-  const handleBookAgain = () => {
+  const handleBookAgain = (ride: any) => {
     clearBookingFlowDraft();
+    updateBookingFlowDraft({
+      pickupText: ride.from,
+      destinationText: ride.to,
+      pickupSelection: {
+        placeId: "book-again-pickup",
+        label: ride.from,
+        lat: ride.pickupLat || parseFloat(import.meta.env.VITE_DEFAULT_LAT || "35.6812"),
+        lon: ride.pickupLng || parseFloat(import.meta.env.VITE_DEFAULT_LNG || "139.7671")
+      },
+      destinationSelection: {
+        placeId: "book-again-dest",
+        label: ride.to,
+        lat: ride.destinationLat || parseFloat(import.meta.env.VITE_DEFAULT_LAT || "35.6812"),
+        lon: ride.destinationLng || parseFloat(import.meta.env.VITE_DEFAULT_LNG || "139.7671")
+      }
+    });
     navigate("/user/booking");
+  };
+
+  const isOnRideReady = (ride: any) => {
+    if (!ride?.scheduledAt || ride.status === "CANCELLED" || ride.status === "COMPLETED") {
+      return false;
+    }
+    const scheduledTime = new Date(ride.scheduledAt).getTime();
+    if (Number.isNaN(scheduledTime)) {
+      return false;
+    }
+    return scheduledTime - Date.now() <= 60 * 60 * 1000;
+  };
+
+  const handleOpenOnRide = (ride: any) => {
+    updateBookingFlowDraft({
+      bookingId: ride.id,
+      pickupText: ride.from,
+      destinationText: ride.to,
+      reservationDate: ride.scheduledAt,
+      reservationTime: ride.time,
+      paymentMethodLabel: ride.paymentMethodLabel,
+      vehicle: ride.vehicle ? { code: ride.vehicle, name: ride.vehicle, capacity: "", eta: "", price: ride.price } : undefined
+    });
+    navigate("/user/ride");
+  };
+
+  const handleCancelReservation = async (ride: any) => {
+    try {
+      await api.cancelBooking(Number(ride.id));
+      setUpcomingRides((prev) => prev.filter((item) => item.id !== ride.id));
+    } catch (error) {
+      console.error("Failed to cancel reservation:", error);
+      alert(error instanceof Error ? error.message : "Failed to cancel reservation.");
+    }
   };
 
   // Filter rides based on search query
@@ -146,7 +227,7 @@ export default function UserRideHistoryPage() {
                       <Button
                         variant="outline"
                         className="flex-1"
-                        onClick={handleBookAgain}
+                        onClick={() => handleBookAgain(ride)}
                       >
                         {t("bookAgain")}
                       </Button>
@@ -177,8 +258,8 @@ export default function UserRideHistoryPage() {
                   <Card key={ride.id} className="p-6 hover:shadow-lg transition-shadow">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold inline-block mb-3">
-                          {t("scheduled")}
+                        <div className={`px-3 py-1 rounded-full text-sm font-semibold inline-block mb-3 ${ride.status === "CANCELLED" ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}`}>
+                          {ride.status === "CANCELLED" ? (t("userCancelled") || "Người dùng đã hủy") : t("scheduled")}
                         </div>
                         
                         <div className="space-y-2 mb-3">
@@ -213,15 +294,28 @@ export default function UserRideHistoryPage() {
                     </div>
 
                     <div className="flex gap-2 pt-4 border-t">
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                      >
-                        {t("modifyReservation")}
-                      </Button>
+                      {ride.status === "CANCELLED" ? (
+                        <Button variant="outline" className="flex-1" disabled>
+                          {t("userCancelled") || "Người dùng đã hủy"}
+                        </Button>
+                      ) : isOnRideReady(ride) ? (
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => handleOpenOnRide(ride)}
+                        >
+                          {t("onRide")}
+                        </Button>
+                      ) : (
+                        <Button variant="outline" className="flex-1" disabled>
+                          {t("modifyReservation")}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleCancelReservation(ride)}
+                        disabled={ride.status === "CANCELLED"}
                       >
                         {t("cancel")}
                       </Button>

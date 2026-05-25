@@ -7,7 +7,7 @@ import { Input } from "../../components/ui/input";
 import { Separator } from "../../components/ui/separator";
 import { MapPin, Calendar, CreditCard, Download, Mail, Check } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { clearBookingFlowDraft, getBookingFlowDraft } from "../../services/bookingFlow";
+import { clearBookingFlowDraft, getBookingFlowDraft, saveRecentCompletedBooking, updateBookingFlowDraft } from "../../services/bookingFlow";
 import { calculateFare, formatVnd } from "../../services/pricing";
 import { api } from "../../services/api";
 
@@ -41,6 +41,30 @@ export default function UserBillPage() {
     clearBookingFlowDraft();
     navigate("/user/home");
   };
+
+  const handleBookAgain = () => {
+    if (booking) {
+      clearBookingFlowDraft();
+      updateBookingFlowDraft({
+        pickupText: booking.pickupAddress,
+        destinationText: booking.destination,
+        pickupSelection: {
+          placeId: "bill-pickup",
+          label: booking.pickupAddress,
+          lat: booking.pickupLat,
+          lon: booking.pickupLng
+        },
+        destinationSelection: {
+          placeId: "bill-dest",
+          label: booking.destination,
+          lat: booking.destinationLat,
+          lon: booking.destinationLng
+        }
+      });
+      navigate("/user/booking");
+    }
+  };
+
   const handleDownloadReceipt = () => {
     window.print();
   };
@@ -58,7 +82,11 @@ export default function UserBillPage() {
       try {
         const res: any = await api.getBookingWithRide(Number(bid));
         if (!mounted) return;
-        setBooking(res.booking || res);
+        const loadedBooking = res.booking || res;
+        setBooking(loadedBooking);
+        if (loadedBooking?.status === "COMPLETED" || loadedBooking?.ride?.status === "COMPLETED") {
+          saveRecentCompletedBooking(loadedBooking);
+        }
       } catch (err) {
         console.error("Failed to load booking for bill page", err);
       }
@@ -189,6 +217,13 @@ export default function UserBillPage() {
               className="w-full h-12 bg-black hover:bg-gray-800 text-white"
             >
               {t("rateDriver")}
+            </Button>
+            <Button
+              onClick={handleBookAgain}
+              variant="outline"
+              className="w-full h-12 bg-white text-black border-black hover:bg-gray-100"
+            >
+              {t("bookAgain")}
             </Button>
             <Button
               variant="outline"

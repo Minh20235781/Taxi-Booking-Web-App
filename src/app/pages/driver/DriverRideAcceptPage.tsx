@@ -76,8 +76,10 @@ export default function DriverRideAcceptPage() {
               <h3 className="font-semibold mb-4">{t("customerInfo")}</h3>
               <div className="flex items-center gap-4 mb-4">
                 <Avatar className="h-16 w-16">
-                  <AvatarImage src={currentRide?.customerAvatar || "https://i.pravatar.cc/150?img=33"} />
-                  <AvatarFallback>{currentRide?.customerName?.slice(0,2) || "顧客"}</AvatarFallback>
+                  {currentRide?.customerAvatar ? (
+                    <AvatarImage src={currentRide.customerAvatar} />
+                  ) : null}
+                  <AvatarFallback>{currentRide?.customerName?.slice(0,2) || "?"}</AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="font-bold text-lg">{currentRide?.customerName || "—"}</p>

@@ -227,7 +227,7 @@ export default function DriverMessageCallPage() {
                   
                   <h2 className="text-2xl font-bold mb-2">{currentRide?.customerName || t("customer")}</h2>
                   <p className="text-gray-600 mb-8">
-                    {isCalling ? "通話中..." : "タップして通話を開始"}
+                    {isCalling ? t("calling") || "Calling..." : t("tapToStartCall") || "Tap to start call"}
                   </p>
 
                   <div className="flex justify-center gap-4">
@@ -264,7 +264,7 @@ export default function DriverMessageCallPage() {
                   )}
 
                   <div className="mt-8 text-sm text-gray-500">
-                    <p>この通話は録音される場合があります</p>
+                    <p>{t("callMayBeRecorded") || "This call may be recorded"}</p>
                   </div>
                 </Card>
               </div>
@@ -280,8 +280,8 @@ export default function DriverMessageCallPage() {
                         {currentRide?.customerAvatar ? <AvatarImage src={currentRide.customerAvatar} /> : null}
                         <AvatarFallback>{currentRide?.customerName ? currentRide.customerName.split(" ")[0] : "?"}</AvatarFallback>
                       </Avatar>
-                      <h2 className="text-2xl font-bold mb-2 text-white">{currentRide?.customerName || "田中 太郎"}</h2>
-                      <p className="text-gray-400 mb-8">ビデオ通話を開始</p>
+                      <h2 className="text-2xl font-bold mb-2 text-white">{currentRide?.customerName || t("customer")}</h2>
+                      <p className="text-gray-400 mb-8">{t("startVideoCall") || "Start Video Call"}</p>
                       <Button
                         onClick={() => setIsCalling(true)}
                         className="h-16 w-16 rounded-full bg-green-500 hover:bg-green-600"
@@ -306,7 +306,6 @@ export default function DriverMessageCallPage() {
                     {/* Your Video (Picture-in-Picture) */}
                     <div className="absolute top-4 right-4 w-48 h-36 bg-gray-700 rounded-lg border-2 border-white flex items-center justify-center">
                       <Avatar className="h-20 w-20">
-                        <AvatarImage src="https://i.pravatar.cc/150?img=12" />
                         <AvatarFallback>You</AvatarFallback>
                       </Avatar>
                     </div>

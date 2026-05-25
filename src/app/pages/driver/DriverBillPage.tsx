@@ -4,7 +4,7 @@ import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Separator } from "../../components/ui/separator";
-import { MapPin, Calendar, DollarSign, Check } from "lucide-react";
+import { MapPin, Calendar, DollarSign, Check, Star } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "../../components/ui/avatar";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api } from "../../services/api";
@@ -16,26 +16,46 @@ export default function DriverBillPage() {
 
   useEffect(() => {
     let mounted = true;
+    let timer: number;
     const bid = sessionStorage.getItem('last_completed_booking_id');
     if (!bid) return;
-    (async () => {
+    
+    const fetchBooking = async () => {
       try {
         const res: any = await api.getBookingWithRide(Number(bid));
         if (!mounted) return;
         setBooking(res.booking || res);
+        
+        // Poll for rating if not present yet
+        const rb = res.booking || res;
+        if (!rb?.ride?.rating) {
+          timer = window.setTimeout(fetchBooking, 3000);
+        }
       } catch (err) {
         console.error('Failed to load booking for driver bill page', err);
       }
-    })();
-    return () => { mounted = false; };
+    };
+    
+    fetchBooking();
+    return () => { 
+      mounted = false; 
+      clearTimeout(timer);
+    };
   }, []);
 
   const subtotal = booking?.estimatedFare ? Math.round(booking.estimatedFare) : 0;
-  const commission = Math.round(subtotal * 0.2);
-  const yourEarnings = subtotal - commission;
+  
+  // Calculate tip: if ride matches and finalFare > estimatedFare
+  const ride = booking?.ride;
+  const tip = ride?.finalFare && booking?.estimatedFare && ride.finalFare > booking.estimatedFare 
+    ? Math.round(ride.finalFare - booking.estimatedFare) 
+    : ride?.payment?.method === 'TIP' ? Math.round(ride.payment.amount) : 0;
+
+  const totalWithTip = subtotal + tip;
+  const commission = Math.round(totalWithTip * 0.2);
+  const yourEarnings = totalWithTip - commission;
   const baseFare = booking?.vehicleClass?.baseFare ? Math.round(booking.vehicleClass.baseFare) : null;
-  const tollFee = booking?.tollFee ?? null;
-  const tip = booking?.tip ?? null;
+  const tollFee = booking?.tollFee ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -57,14 +77,14 @@ export default function DriverBillPage() {
           <div className="text-center mb-6">
               <div className="flex items-center justify-center gap-2 mb-2">
                 <DollarSign className="h-8 w-8 text-green-600" />
-                <h2 className="text-5xl font-bold text-green-600">{subtotal ? `${subtotal.toLocaleString()} VND` : ' - '}</h2>
+                <h2 className="text-5xl font-bold text-green-600">{yourEarnings ? `${yourEarnings.toLocaleString()} VND` : ' - '}</h2>
               </div>
               <p className="text-gray-600">{t("thisRideEarnings")}</p>
             </div>
 
             <div className="grid grid-cols-3 gap-4 pt-4 border-t border-green-200">
               <div className="text-center">
-                <p className="text-2xl font-bold text-green-600">{subtotal ? `${subtotal.toLocaleString()}` : '-'}</p>
+                <p className="text-2xl font-bold text-green-600">{yourEarnings ? `${yourEarnings.toLocaleString()}` : '-'}</p>
                 <p className="text-sm text-gray-600">{t("todayEarnings")}</p>
               </div>
               <div className="text-center">
@@ -118,16 +138,16 @@ export default function DriverBillPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">{t("tollFee")}</span>
-                <span className="font-semibold">{tollFee ? `${tollFee.toLocaleString()} VND` : '-'}</span>
+                <span className="font-semibold">{tollFee ? `${tollFee.toLocaleString()} VND` : '0 VND'}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">{t("tip")}</span>
-                <span className="font-semibold text-green-600">{tip ? `${tip.toLocaleString()} VND` : '-'}</span>
+              <div className="flex justify-between bg-green-50 px-2 py-1 rounded">
+                <span className="text-gray-600 font-semibold">{t("tip")}</span>
+                <span className="font-bold text-green-600">{tip ? `+${tip.toLocaleString()} VND` : '0 VND'}</span>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="text-gray-600">{t("subtotal")}</span>
-                <span className="font-semibold">{subtotal ? `${subtotal.toLocaleString()} VND` : '-'}</span>
+                <span className="font-semibold">{totalWithTip ? `${totalWithTip.toLocaleString()} VND` : '-'}</span>
               </div>
               <div className="flex justify-between text-red-600">
                 <span>{t("commission")} (20%)</span>
@@ -142,21 +162,55 @@ export default function DriverBillPage() {
           </Card>
 
           {/* Customer Info */}
-          <Card className="p-6 mb-6 flex items-center gap-4">
-            <Avatar>
-              {(() => {
-                try {
-                  const avatarUrl = booking?.customerSnapshotJson ? JSON.parse(booking.customerSnapshotJson).avatarUrl : booking?.user?.avatarUrl;
-                  return avatarUrl ? <AvatarImage src={avatarUrl} alt="customer avatar" /> : <AvatarFallback>{(booking?.user?.fullName || "?").slice(0,1)}</AvatarFallback>;
-                } catch (e) {
-                  return <AvatarFallback>{(booking?.user?.fullName || "?").slice(0,1)}</AvatarFallback>;
-                }
-              })()}
-            </Avatar>
-            <div>
-              <h4 className="font-semibold mb-1">{booking?.customerSnapshotJson ? JSON.parse(booking.customerSnapshotJson).fullName : booking?.user?.fullName || '-'}</h4>
-              <p className="text-sm text-gray-600">{t("waitingForRating")}</p>
+          <Card className="p-6 mb-6">
+            <div className="flex items-center gap-4 mb-4">
+              <Avatar>
+                {(() => {
+                  try {
+                    const avatarUrl = booking?.customerSnapshotJson ? JSON.parse(booking.customerSnapshotJson).avatarUrl : booking?.user?.avatarUrl;
+                    return avatarUrl ? <AvatarImage src={avatarUrl} alt="customer avatar" /> : <AvatarFallback>{(booking?.user?.fullName || "?").slice(0,1)}</AvatarFallback>;
+                  } catch (e) {
+                    return <AvatarFallback>{(booking?.user?.fullName || "?").slice(0,1)}</AvatarFallback>;
+                  }
+                })()}
+              </Avatar>
+              <div>
+                <h4 className="font-semibold mb-1">{booking?.customerSnapshotJson ? JSON.parse(booking.customerSnapshotJson).fullName : booking?.user?.fullName || '-'}</h4>
+                {booking?.ride?.rating ? (
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-gray-800">{booking.ride.rating.score}</span>
+                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">{t("waitingForRating")}</p>
+                )}
+              </div>
             </div>
+            
+            {booking?.ride?.rating && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                {booking.ride.rating.comment && (
+                  <p className="text-gray-700 italic mb-2">"{booking.ride.rating.comment}"</p>
+                )}
+                {booking.ride.rating.compliments && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {(() => {
+                      try {
+                        const comps = JSON.parse(booking.ride.rating.compliments);
+                        if (Array.isArray(comps)) {
+                          return comps.map((c: string) => (
+                            <span key={c} className="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-semibold">
+                              {c}
+                            </span>
+                          ));
+                        }
+                      } catch (e) {}
+                      return null;
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
 
           {/* Action Buttons */}
