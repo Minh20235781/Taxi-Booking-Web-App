@@ -31,6 +31,9 @@ interface Reservation {
   id: string;
   date: string;
   time: string;
+  scheduledAt?: string;
+  bookingStatus: string;
+  rideStatus: string | null;
   customerName: string;
   customerAvatar: string;
   customerRating: number;
@@ -92,6 +95,9 @@ export default function DriverReservationAcceptPage() {
               id: String(b.id),
               date: dateStr,
               time: timeStr,
+              scheduledAt: when,
+              bookingStatus: b.status,
+              rideStatus: b.ride?.status || null,
               customerName: b.user?.fullName || "",
               customerAvatar: b.user?.avatarUrl || null,
               customerRating: b.user?.averageRating || 0,
@@ -188,7 +194,7 @@ export default function DriverReservationAcceptPage() {
       // remove from available immediately
       setAvailableReservations((prev) => prev.filter((r) => r.id !== reservation.id));
       setSelectedReservation(null);
-      navigate("/driver/ride-accept");
+      alert(t("reservationAcceptedSuccessfully") || "Reservation accepted.");
     } catch (error) {
       console.error(error);
       const message = error?.message || (error && String(error)) || "Failed to accept reservation.";
@@ -403,12 +409,20 @@ export default function DriverReservationAcceptPage() {
                                 {reservation.time}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1 bg-green-100 text-green-800 px-3 py-1 rounded-full">
-                              <DollarSign className="h-4 w-4" />
-                              <span className="font-bold">
-                                {reservation.earnings} VND
-                              </span>
-                            </div>
+                            {reservation.bookingStatus === "CANCELLED" ? (
+                              <div className="flex items-center gap-1 bg-red-100 text-red-800 px-3 py-1 rounded-full">
+                                <span className="font-bold text-xs">
+                                  {t("userCancelled") || "User cancelled"}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 bg-green-100 text-green-800 px-3 py-1 rounded-full">
+                                <DollarSign className="h-4 w-4" />
+                                <span className="font-bold">
+                                  {reservation.earnings} VND
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           {/* Customer */}
@@ -532,29 +546,35 @@ export default function DriverReservationAcceptPage() {
                             </div>
 
                             {/* Action Buttons */}
-                              <div className="grid grid-cols-2 gap-3">
-                                <Button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDecline(
-                                      reservation.id,
-                                    );
-                                  }}
-                                  variant="outline"
-                                  className="h-10"
-                                >
-                                  {t("decline")}
+                              {reservation.bookingStatus === "CANCELLED" ? (
+                                <Button variant="outline" className="h-10 w-full border-red-200 text-red-700" disabled>
+                                  {t("userCancelled") || "User cancelled"}
                                 </Button>
-                                <Button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAccept(reservation);
-                                  }}
-                                  className="h-10 bg-green-600 hover:bg-green-700 text-white"
-                                >
-                                  {t("accept")}
-                                </Button>
-                              </div>
+                              ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                  <Button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDecline(
+                                        reservation.id,
+                                      );
+                                    }}
+                                    variant="outline"
+                                    className="h-10"
+                                  >
+                                    {t("decline")}
+                                  </Button>
+                                  <Button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAccept(reservation);
+                                    }}
+                                    className="h-10 bg-green-600 hover:bg-green-700 text-white"
+                                  >
+                                    {t("accept")}
+                                  </Button>
+                                </div>
+                              )}
                             </>
                           )}
                         </Card>
@@ -598,6 +618,11 @@ export default function DriverReservationAcceptPage() {
                           <span className="text-sm font-semibold">
                             {reservation.time}
                           </span>
+                          {reservation.bookingStatus === "CANCELLED" && (
+                            <span className="ml-auto text-[11px] font-semibold bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                              {t("userCancelled") || "User cancelled"}
+                            </span>
+                          )}
                         </div>
 
                         {/* Customer */}
@@ -645,19 +670,34 @@ export default function DriverReservationAcceptPage() {
                           </span>
                         </div>
 
-                        {/* Cancel Button */}
-                        <Button
-                          onClick={() =>
-                            handleCancelAcceptance(
-                              reservation.id,
-                            )
-                          }
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-xs h-8"
-                        >
-                          {t("cancelAcceptance")}
-                        </Button>
+                        {reservation.bookingStatus !== "CANCELLED" ? (
+                          <div className="flex gap-2">
+                            {reservation.scheduledAt && (new Date(reservation.scheduledAt).getTime() - Date.now() <= 60 * 60 * 1000) && (
+                              <Button
+                                onClick={() => navigate("/driver/ride-info")}
+                                className="flex-1 text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                {t("onRide")}
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() =>
+                                handleCancelAcceptance(
+                                  reservation.id,
+                                )
+                              }
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 text-xs h-8"
+                            >
+                              {t("cancelAcceptance")}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="w-full text-center text-xs font-semibold text-red-700 bg-red-100 rounded-full py-2">
+                            {t("userCancelled") || "User cancelled"}
+                          </div>
+                        )}
                       </Card>
                     ))}
                   </div>

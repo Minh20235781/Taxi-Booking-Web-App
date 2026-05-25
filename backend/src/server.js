@@ -563,6 +563,9 @@ app.put("/driver/profile", authRequired, upload.fields([
   { name: 'languageCertification', maxCount: 1 }
 ]), async (req, res) => {
   const userId = Number(req.auth.sub);
+  if (req.auth.role !== "DRIVER") {
+    return res.status(403).json({ message: "Driver account required" });
+  }
   const data = req.body;
 
   try {
@@ -617,9 +620,13 @@ app.put("/driver/profile", authRequired, upload.fields([
       updateData.isOnline = data.isOnline === 'true' || data.isOnline === true;
     }
 
-    const driverProfile = await prisma.driverProfile.update({
+    const driverProfile = await prisma.driverProfile.upsert({
       where: { userId },
-      data: updateData
+      update: updateData,
+      create: {
+        userId,
+        ...updateData
+      }
     });
 
     if (userDataToUpdate) {
@@ -654,9 +661,6 @@ app.put("/driver/profile", authRequired, upload.fields([
 
     res.json({ message: "Profile updated successfully.", driverProfile });
   } catch (error) {
-    if (error.code === 'P2025') {
-      return res.status(404).json({ message: "Driver profile not found." });
-    }
     console.error("Error updating driver profile:", error);
     res.status(500).json({ message: "Internal server error" });
   }
@@ -773,14 +777,16 @@ app.get("/driver/pending-requests", authRequired, async (req, res) => {
 app.get("/bookings/with-ride/:id", authRequired, async (req, res) => {
   const id = Number(req.params.id);
   try {
-    const booking = await prisma.booking.findUnique({
+    let booking = await prisma.booking.findUnique({
       where: { id },
       include: {
         user: true,
         vehicleClass: true,
         ride: {
           include: {
-            driver: { include: { user: true } }
+            driver: { include: { user: true } },
+            rating: true,
+            payment: true
           }
         }
       }
@@ -880,7 +886,8 @@ app.post("/driver/complete-ride/:bookingId", authRequired, async (req, res) => {
         where: { id: ride.id },
         data: {
           status: "COMPLETED",
-          completedAt: new Date()
+          completedAt: new Date(),
+          finalFare: booking.estimatedFare
         }
       });
     }
@@ -1210,6 +1217,10 @@ app.get("/bookings/my-completed", authRequired, async (req, res) => {
         driver: driverName,
         from: b.pickupAddress,
         to: b.destination,
+        pickupLat: b.pickupLat,
+        pickupLng: b.pickupLng,
+        destinationLat: b.destinationLat,
+        destinationLng: b.destinationLng,
         date: dateStr,
         time: timeStr,
         price: fareStr,
@@ -1256,8 +1267,10 @@ app.get("/bookings/my-upcoming", authRequired, async (req, res) => {
         to: b.destination,
         date: dateStr,
         time: timeStr,
+        scheduledAt: b.scheduledAt,
         vehicle: vehicleType,
-        status: b.ride?.status || "PENDING"
+        status: b.status,
+        rideStatus: b.ride?.status || null
       };
     });
 
@@ -1265,6 +1278,56 @@ app.get("/bookings/my-upcoming", authRequired, async (req, res) => {
   } catch (error) {
     console.error("Error fetching upcoming rides:", error);
     res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Cancel a user's reservation/booking and notify the driver's reservation list.
+app.post("/bookings/:bookingId/cancel", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const bookingId = Number(req.params.bookingId);
+
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { ride: true }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    if (booking.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (booking.status === "COMPLETED") {
+      return res.status(400).json({ message: "Completed bookings cannot be cancelled" });
+    }
+
+    const cancelledAt = new Date();
+    const updatedBooking = await prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: "CANCELLED",
+        cancelledAt
+      }
+    });
+
+    if (booking.ride) {
+      await prisma.ride.update({
+        where: { id: booking.ride.id },
+        data: {
+          status: "CANCELLED",
+          cancelledAt,
+          cancelReason: "USER_CANCELLED"
+        }
+      });
+    }
+
+    return res.json({ message: "Booking cancelled.", booking: updatedBooking });
+  } catch (error) {
+    console.error("Error cancelling booking:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -1280,7 +1343,7 @@ app.get("/driver/accepted-rides", authRequired, async (req, res) => {
     const rides = await prisma.ride.findMany({
       where: {
         driverProfileId: driverProfile.id,
-        status: { in: ["ACCEPTED", "DRIVER_EN_ROUTE", "ARRIVED", "IN_PROGRESS"] }
+        status: { in: ["ACCEPTED", "DRIVER_EN_ROUTE", "ARRIVED", "IN_PROGRESS", "CANCELLED"] }
       },
       include: {
         booking: { include: { user: true, vehicleClass: true } }
@@ -1310,6 +1373,9 @@ app.get("/driver/accepted-rides", authRequired, async (req, res) => {
         id: String(b.id),
         date: dateStr,
         time: timeStr,
+        scheduledAt: when,
+        bookingStatus: b.status,
+        rideStatus: r.status,
         customerName: b.user?.fullName || "",
         customerAvatar: b.user?.avatarUrl || null,
         customerRating: b.user?.averageRating || 0,
@@ -1377,7 +1443,8 @@ app.post("/rides/:rideId/rating", authRequired, async (req, res) => {
         rideId,
         userId,
         score: Number(score),
-        comment: comment || null
+        comment: comment || null,
+        compliments: compliments ? JSON.stringify(compliments) : null
       }
     });
 

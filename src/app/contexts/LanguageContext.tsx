@@ -147,6 +147,7 @@ const translations = {
       "予約は指定時刻の15分前までに確定する必要があります。",
     backToBookNow: "今すぐ予約に戻る",
     important: "ご注意：",
+    userCancelled: "利用者がキャンセルしました",
 
     // Vehicles
     economy: "エコノミー",
@@ -288,6 +289,7 @@ const translations = {
     noRidesFound: "乗車履歴が見つかりません",
     searchByDestinationOrDate: "目的地または日付で検索...",
     completedRides: "完了した乗車",
+    noCompletedRides: "完了した乗車がありません",
     upcomingRides: "予約済み",
     receipt: "領収書",
     bookAgain: "もう一度予約",
@@ -574,6 +576,7 @@ const translations = {
       "Reservations must be confirmed 15 minutes before the specified time.",
     backToBookNow: "Return to Book Now",
     important: "Note:",
+    userCancelled: "User cancelled",
 
     // Vehicles
     economy: "Economy",
@@ -717,6 +720,7 @@ const translations = {
     searchByDestinationOrDate:
       "Search by destination or date...",
     completedRides: "Completed rides",
+    noCompletedRides: "No completed rides yet",
     upcomingRides: "Upcoming rides",
     receipt: "Receipt",
     bookAgain: "Book again",
@@ -880,6 +884,14 @@ const LanguageContext = createContext<
   LanguageContextType | undefined
 >(undefined);
 
+const fallbackLanguageContext: LanguageContextType = {
+  language: "en",
+  setLanguage: () => {
+    /* noop fallback */
+  },
+  t: (key: string) => key
+};
+
 // Language Provider Component - Provides translation functionality to the app
 export function LanguageProvider({
   children,
@@ -908,9 +920,7 @@ export function LanguageProvider({
 export function useLanguage() {
   const context = useContext(LanguageContext);
   if (context === undefined) {
-    throw new Error(
-      "useLanguage must be used within a LanguageProvider",
-    );
+    return fallbackLanguageContext;
   }
   return context;
 }

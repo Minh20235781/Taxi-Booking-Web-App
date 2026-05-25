@@ -2,6 +2,7 @@ import type { LocationSuggestion } from "./api";
 
 const BOOKING_FLOW_KEY = "booking_flow_draft";
 const LEGACY_BOOKING_KEY = "booking_draft";
+const RECENT_COMPLETED_BOOKING_KEY = "recent_completed_booking";
 
 export interface VehicleSummary {
   code: string;
@@ -38,6 +39,17 @@ function parseDraft(raw: string | null): BookingFlowDraft | null {
   }
   try {
     return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function parseJson<T>(raw: string | null): T | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as T;
   } catch {
     return null;
   }
@@ -85,6 +97,24 @@ export function updateBookingFlowDraft(patch: Partial<BookingFlowDraft>) {
 export function clearBookingFlowDraft() {
   sessionStorage.removeItem(BOOKING_FLOW_KEY);
   sessionStorage.removeItem(LEGACY_BOOKING_KEY);
+}
+
+export function saveRecentCompletedBooking(booking: unknown) {
+  const serialized = JSON.stringify(booking);
+  sessionStorage.setItem(RECENT_COMPLETED_BOOKING_KEY, serialized);
+  localStorage.setItem(RECENT_COMPLETED_BOOKING_KEY, serialized);
+}
+
+export function getRecentCompletedBooking<T = any>(): T | null {
+  return (
+    parseJson<T>(sessionStorage.getItem(RECENT_COMPLETED_BOOKING_KEY)) ||
+    parseJson<T>(localStorage.getItem(RECENT_COMPLETED_BOOKING_KEY))
+  );
+}
+
+export function clearRecentCompletedBooking() {
+  sessionStorage.removeItem(RECENT_COMPLETED_BOOKING_KEY);
+  localStorage.removeItem(RECENT_COMPLETED_BOOKING_KEY);
 }
 
 /** ISO datetime for SCHEDULED bookings (reservation flow). */

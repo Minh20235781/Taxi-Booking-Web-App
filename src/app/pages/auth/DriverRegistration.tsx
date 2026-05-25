@@ -68,6 +68,20 @@ export default function DriverRegistration() {
     vietnamese: true,
   });
 
+  const readStoredUser = () => {
+    const raw = localStorage.getItem("auth_user") || localStorage.getItem("user");
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed?.user || parsed;
+    } catch {
+      return null;
+    }
+  };
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -111,12 +125,22 @@ export default function DriverRegistration() {
       // Basic client-side validation
       const missing: string[] = [];
       const authToken = localStorage.getItem("auth_token");
+      const storedAuthUser = readStoredUser() as { role?: string; email?: string } | null;
+
+      const isDriverSession = Boolean(authToken && storedAuthUser?.role === "DRIVER");
       if (!formData.email) missing.push("email");
-      // Only require password when user is not already authenticated (token absent)
-      if (!authToken && !formData.password) missing.push("password");
+      // Only require password when we still need to create/login a driver account.
+      if (!isDriverSession && !formData.password) missing.push("password");
       if (!formData.phone) missing.push("phone");
       if (missing.length) {
         return alert(`Vui lòng nhập: ${missing.join(", ")}`);
+      }
+
+      if (
+        storedAuthUser?.role === "USER" &&
+        storedAuthUser.email?.trim().toLowerCase() === formData.email.trim().toLowerCase()
+      ) {
+        return alert("Bạn đang đăng nhập bằng tài khoản khách. Hãy dùng email tài xế riêng hoặc đăng xuất rồi đăng ký tài xế.");
       }
 
       const langs: string[] = [];
@@ -126,29 +150,31 @@ export default function DriverRegistration() {
 
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
-      // If user not authenticated yet, create account for driver
-      let token: string | undefined;
-      try {
-        const signupRes: any = await api.signup({
-          fullName,
-          email: formData.email,
-          phone: formData.phone,
-          password: formData.password,
-          role: "DRIVER"
-        });
-        token = signupRes?.token || signupRes?.data?.token || signupRes?.token;
-      } catch (e: any) {
-        // If signup fails because user exists, try login (only if password provided)
-        if (e && e.message && e.message.includes("Email already exists")) {
-          try {
-            const loginRes: any = await api.login({ email: formData.email, password: formData.password, role: "DRIVER" });
-            token = loginRes?.token || loginRes?.data?.token;
-          } catch (err: any) {
-            // Surface clearer message
-            throw new Error(err?.message || "Đăng nhập thất bại. Vui lòng kiểm tra email/mật khẩu.");
+      // Reuse an existing driver session; otherwise create/login a driver account first.
+      let token: string | undefined = isDriverSession ? authToken || undefined : undefined;
+      if (!token) {
+        try {
+          const signupRes: any = await api.signup({
+            fullName,
+            email: formData.email,
+            phone: formData.phone,
+            password: formData.password,
+            role: "DRIVER"
+          });
+          token = signupRes?.token || signupRes?.data?.token || signupRes?.token;
+        } catch (e: any) {
+          // If signup fails because user exists, try login (only if password provided)
+          if (e && e.message && e.message.includes("Email already exists")) {
+            try {
+              const loginRes: any = await api.login({ email: formData.email, password: formData.password, role: "DRIVER" });
+              token = loginRes?.token || loginRes?.data?.token;
+            } catch (err: any) {
+              // Surface clearer message
+              throw new Error(err?.message || "Đăng nhập thất bại. Vui lòng kiểm tra email/mật khẩu.");
+            }
+          } else {
+            throw new Error(e?.message || "Đăng ký thất bại");
           }
-        } else {
-          throw new Error(e?.message || "Đăng ký thất bại");
         }
       }
 
@@ -196,7 +222,7 @@ export default function DriverRegistration() {
       const response = await fetch(`${API_BASE_URL}/driver/profile`, {
         method: "PUT",
         headers: {
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: formDataToSend
       });
@@ -207,7 +233,7 @@ export default function DriverRegistration() {
       }
 
       const me = await api.me();
-      localStorage.setItem("user", JSON.stringify(me));
+      localStorage.setItem("user", JSON.stringify(me.user || me));
       navigate("/driver/home");
     } catch (error) {
       console.error(error);
@@ -217,20 +243,15 @@ export default function DriverRegistration() {
 
   // Prefill email/phone if we have an authenticated user from previous step
   useEffect(() => {
-    const stored = localStorage.getItem("auth_user") || localStorage.getItem("user");
+    const stored = readStoredUser();
     if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setFormData((prev) => ({
-          ...prev,
-          email: parsed.email || prev.email,
-          phone: parsed.phone || prev.phone,
-          firstName: parsed.fullName ? String(parsed.fullName).split(" ").slice(0, -1).join(" ") : prev.firstName,
-          lastName: parsed.fullName ? String(parsed.fullName).split(" ").slice(-1).join(" ") : prev.lastName,
-        }));
-      } catch {
-        // ignore parse errors
-      }
+      setFormData((prev) => ({
+        ...prev,
+        email: stored.email || prev.email,
+        phone: stored.phone || prev.phone,
+        firstName: stored.fullName ? String(stored.fullName).split(" ").slice(0, -1).join(" ") : prev.firstName,
+        lastName: stored.fullName ? String(stored.fullName).split(" ").slice(-1).join(" ") : prev.lastName,
+      }));
     }
   }, []);
 
