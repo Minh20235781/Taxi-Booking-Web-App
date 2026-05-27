@@ -28,7 +28,21 @@ export default function DriverProfilePage() {
   // State lưu thông tin profile từ database
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [ratings, setRatings] = useState<{ id: number; score: number; comment: string | null; createdAt: string; riderName: string | null; riderAvatar: string | null }[]>([]);
+  const [ratings, setRatings] = useState<
+    { id: number; score: number; comment: string | null; compliments?: string[]; createdAt: string; riderName: string | null; riderAvatar: string | null }[]
+  >([]);
+
+  const complimentLabel = (key: string) => {
+    const map: Record<string, string> = {
+      friendly: t("friendlyDriver"),
+      clean: t("cleanVehicle"),
+      safe: t("safeDriving"),
+      onTime: t("onTime"),
+      conversation: t("greatConversation"),
+      smooth: t("smoothDriving"),
+    };
+    return map[key] || key;
+  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -220,6 +234,15 @@ export default function DriverProfilePage() {
                           ))}
                         </div>
                       </div>
+                      {r.compliments && r.compliments.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {r.compliments.map((tag) => (
+                            <span key={tag} className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">
+                              {complimentLabel(tag)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {r.comment ? (
                         <p className="text-sm text-gray-600 mt-1">{r.comment}</p>
                       ) : null}

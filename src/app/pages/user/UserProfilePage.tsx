@@ -5,30 +5,51 @@ import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  CreditCard, 
-  Settings, 
+import {
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  CreditCard,
+  Settings,
   Bell,
   Shield,
   HelpCircle,
-  ChevronRight
+  ChevronRight,
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+
+function formatMemberSince(createdAt?: string, locale = "ja-JP") {
+  if (!createdAt) return "—";
+  return new Date(createdAt).toLocaleDateString(locale, { year: "numeric", month: "short" });
+}
 
 export default function UserProfilePage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [user, setUser] = useState<any>(null);
+  const [completedCount, setCompletedCount] = useState<number | null>(null);
 
   useEffect(() => {
-    api.me()
+    api
+      .me()
       .then((res: any) => setUser(res.user || res))
       .catch((err) => console.error("Failed to load user:", err));
+
+    api
+      .getCompletedRides()
+      .then((rides) => setCompletedCount(Array.isArray(rides) ? rides.length : 0))
+      .catch(() => setCompletedCount(0));
   }, []);
+
+  const locationLine = [user?.address, user?.city, user?.country].filter(Boolean).join(", ");
+  const initials =
+    user?.fullName
+      ?.split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p: string) => p[0])
+      .join("") || "?";
 
   const menuItems = [
     {
@@ -47,7 +68,7 @@ export default function UserProfilePage() {
       icon: CreditCard,
       title: t("paymentMethod"),
       description: t("managePaymentMethods"),
-      action: () => navigate("/user/payment"),
+      action: () => navigate("/user/payment-method"),
     },
     {
       icon: Bell,
@@ -75,55 +96,59 @@ export default function UserProfilePage() {
 
       <div className="flex-1 p-6 overflow-auto">
         <div className="max-w-4xl mx-auto">
-          {/* Profile Header */}
           <Card className="p-8 mb-6">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-6">
                 <Avatar className="h-24 w-24">
-                  <AvatarImage src={user?.avatarUrl || "https://i.pravatar.cc/150?img=33"} />
-                  <AvatarFallback>{user?.fullName ? user.fullName.slice(0,2) : "顧客"}</AvatarFallback>
+                  {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} /> : null}
+                  <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
                 <div>
                   <h1 className="text-2xl font-bold mb-2">{user?.fullName || "—"}</h1>
                   <div className="space-y-1 text-gray-600">
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4" />
-                      <span>{user?.email || "-"}</span>
+                      <span>{user?.email || "—"}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Phone className="h-4 w-4" />
-                      <span>{user?.phone || "-"}</span>
+                      <span>{user?.phone || "—"}</span>
                     </div>
+                    {locationLine ? (
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        <span>{locationLine}</span>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400">{t("profileNotFilledYet")}</p>
+                    )}
                   </div>
                 </div>
               </div>
-              <Button
-                onClick={() => navigate("/user/edit-profile")}
-                variant="outline"
-              >
+              <Button onClick={() => navigate("/user/edit-profile")} variant="outline">
                 <Settings className="h-4 w-4 mr-2" />
                 {t("edit")}
               </Button>
             </div>
           </Card>
 
-          {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <Card className="p-6 text-center">
-              <p className="text-3xl font-bold mb-1">47</p>
+              <p className="text-3xl font-bold mb-1">
+                {completedCount === null ? "—" : completedCount}
+              </p>
               <p className="text-gray-600">{t("totalRides")}</p>
             </Card>
             <Card className="p-6 text-center">
-              <p className="text-3xl font-bold mb-1">4.8</p>
+              <p className="text-3xl font-bold mb-1">—</p>
               <p className="text-gray-600">{t("averageRating")}</p>
             </Card>
             <Card className="p-6 text-center">
-              <p className="text-3xl font-bold mb-1">2年</p>
+              <p className="text-3xl font-bold mb-1">{formatMemberSince(user?.createdAt)}</p>
               <p className="text-gray-600">{t("membershipPeriod")}</p>
             </Card>
           </div>
 
-          {/* Menu Items */}
           <div className="space-y-3">
             {menuItems.map((item, index) => {
               const Icon = item.icon;
@@ -150,13 +175,8 @@ export default function UserProfilePage() {
             })}
           </div>
 
-          {/* Logout */}
           <div className="mt-6">
-            <Button
-              onClick={() => navigate("/login")}
-              variant="outline"
-              className="w-full h-12 text-red-600 border-red-600 hover:bg-red-50"
-            >
+            <Button onClick={() => navigate("/login")} variant="outline" className="w-full h-12">
               {t("logout")}
             </Button>
           </div>

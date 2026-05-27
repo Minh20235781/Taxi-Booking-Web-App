@@ -22,6 +22,7 @@ export default function UserEditProfilePage() {
     address: "",
     city: "",
     country: "",
+    avatarUrl: "",
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
@@ -39,6 +40,7 @@ export default function UserEditProfilePage() {
           address: u.address || "",
           city: u.city || "",
           country: u.country || "",
+          avatarUrl: u.avatarUrl || "",
         }));
       })
       .catch((err) => console.error("Failed to load user for edit:", err));
@@ -94,8 +96,19 @@ export default function UserEditProfilePage() {
             <div className="flex items-center gap-6">
               <div className="relative">
                 <Avatar className="h-24 w-24">
-                  <AvatarImage src="https://i.pravatar.cc/150?img=33" />
-                  <AvatarFallback>田中</AvatarFallback>
+                  {formData.avatarUrl ? (
+                    <AvatarImage src={formData.avatarUrl} />
+                  ) : null}
+                  <AvatarFallback>
+                    {formData.fullName
+                      ? formData.fullName
+                          .split(" ")
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((p) => p[0])
+                          .join("")
+                      : "?"}
+                  </AvatarFallback>
                 </Avatar>
                 <button className="absolute bottom-0 right-0 bg-black text-white p-2 rounded-full hover:bg-gray-800">
                   <Camera className="h-4 w-4" />

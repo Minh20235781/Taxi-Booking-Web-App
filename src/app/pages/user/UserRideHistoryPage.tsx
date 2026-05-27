@@ -17,6 +17,21 @@ export default function UserRideHistoryPage() {
   const [completedRides, setCompletedRides] = useState<any[]>([]);
   const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  const handleCancelReservation = async (ride: { id: number; canCancel?: boolean }) => {
+    if (!ride.canCancel) return;
+    if (!window.confirm(t("cancelReservationConfirm"))) return;
+    try {
+      setCancellingId(ride.id);
+      await api.cancelBooking(ride.id);
+      setUpcomingRides((prev) => prev.filter((r) => r.id !== ride.id));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t("cancelFailed"));
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchRideData = async () => {
@@ -258,9 +273,33 @@ export default function UserRideHistoryPage() {
                   <Card key={ride.id} className="p-6 hover:shadow-lg transition-shadow">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <div className={`px-3 py-1 rounded-full text-sm font-semibold inline-block mb-3 ${ride.status === "CANCELLED" ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}`}>
-                          {ride.status === "CANCELLED" ? (t("userCancelled") || "Người dùng đã hủy") : t("scheduled")}
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {ride.status === "CANCELLED" ? (
+                            <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold">
+                              {t("userCancelled")}
+                            </span>
+                          ) : (
+                            <>
+                              <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold">
+                                {t("scheduled")}
+                              </span>
+                              <span
+                                className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                                  ride.driverAssigned
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                {ride.driverAssigned ? t("driverAssigned") : t("waitingForDriver")}
+                              </span>
+                            </>
+                          )}
                         </div>
+                        {ride.driverName ? (
+                          <p className="text-sm text-gray-700 mb-2">
+                            {t("yourDriver")}: <strong>{ride.driverName}</strong>
+                          </p>
+                        ) : null}
                         
                         <div className="space-y-2 mb-3">
                           <div className="flex items-start gap-2">
@@ -293,31 +332,44 @@ export default function UserRideHistoryPage() {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 pt-4 border-t">
+                    <div className="flex flex-wrap gap-2 pt-4 border-t">
                       {ride.status === "CANCELLED" ? (
                         <Button variant="outline" className="flex-1" disabled>
-                          {t("userCancelled") || "Người dùng đã hủy"}
-                        </Button>
-                      ) : isOnRideReady(ride) ? (
-                        <Button
-                          variant="outline"
-                          className="flex-1"
-                          onClick={() => handleOpenOnRide(ride)}
-                        >
-                          {t("onRide")}
+                          {t("userCancelled")}
                         </Button>
                       ) : (
-                        <Button variant="outline" className="flex-1" disabled>
-                          {t("modifyReservation")}
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() =>
+                              navigate(`/user/reservation-status?bookingId=${ride.id}`)
+                            }
+                          >
+                            {t("viewReservationStatus")}
+                          </Button>
+                          {isOnRideReady(ride) && (
+                            <Button
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => handleOpenOnRide(ride)}
+                            >
+                              {t("onRide")}
+                            </Button>
+                          )}
+                        </>
                       )}
                       <Button
                         variant="ghost"
                         className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        disabled={
+                          ride.status === "CANCELLED" ||
+                          !ride.canCancel ||
+                          cancellingId === ride.id
+                        }
                         onClick={() => handleCancelReservation(ride)}
-                        disabled={ride.status === "CANCELLED"}
                       >
-                        {t("cancel")}
+                        {cancellingId === ride.id ? t("cancelling") : t("cancel")}
                       </Button>
                     </div>
                   </Card>
