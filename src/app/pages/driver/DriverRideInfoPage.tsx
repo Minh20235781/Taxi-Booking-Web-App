@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useEffect, useState } from "react";
 import { Header } from "../../components/Header";
 import { MapPlaceholder } from "../../components/MapPlaceholder";
@@ -12,8 +12,13 @@ import { api } from "../../services/api";
 export default function DriverRideInfoPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [searchParams] = useSearchParams();
+  const bookingIdParam = searchParams.get("bookingId");
 
   const [currentRide, setCurrentRide] = useState<any | null>(null);
+  const [rideCompleted, setRideCompleted] = useState(false);
+  const [paymentReceived, setPaymentReceived] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -21,7 +26,11 @@ export default function DriverRideInfoPage() {
       try {
         const rides: any[] = await api.getDriverAcceptedRides();
         if (!mounted) return;
-        if (Array.isArray(rides) && rides.length > 0) {
+        if (!Array.isArray(rides) || rides.length === 0) return;
+        if (bookingIdParam) {
+          const match = rides.find((r) => String(r.id) === bookingIdParam);
+          setCurrentRide(match || rides[0]);
+        } else {
           setCurrentRide(rides[0]);
         }
       } catch (err) {
@@ -31,7 +40,42 @@ export default function DriverRideInfoPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [bookingIdParam]);
+
+  // Poll booking status — sync when user confirms payment or ride already completed
+  useEffect(() => {
+    const bid = currentRide?.id ? Number(currentRide.id) : 0;
+    if (!bid) return;
+
+    let mounted = true;
+    const poll = async () => {
+      try {
+        const res: any = await api.getBookingWithRide(bid);
+        if (!mounted) return;
+        const data = res?.booking || res?.data || res;
+        if (data?.ride?.status === "COMPLETED") {
+          setRideCompleted(true);
+        }
+        if (data?.status === "COMPLETED" || data?.ride?.payment?.status === "PAID") {
+          setPaymentReceived(true);
+          try {
+            sessionStorage.setItem("last_completed_booking_id", String(bid));
+            sessionStorage.setItem("last_completed_booking", JSON.stringify(data));
+          } catch {}
+          navigate("/driver/bill");
+        }
+      } catch (err) {
+        console.error("Failed to poll booking status", err);
+      }
+    };
+
+    poll();
+    const interval = window.setInterval(poll, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [currentRide?.id, navigate]);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -74,14 +118,22 @@ export default function DriverRideInfoPage() {
 
               <div className="flex gap-3 mb-4">
                 <Button
-                  onClick={() => navigate("/driver/message-call")}
+                  onClick={() =>
+                    navigate(
+                      `/driver/message-call?bookingId=${currentRide?.id ? Number(currentRide.id) : ""}`
+                    )
+                  }
                   className="flex-1 bg-black hover:bg-gray-800 text-white"
                 >
                   <MessageCircle className="h-4 w-4 mr-2" />
                   {t("message")}
                 </Button>
                 <Button
-                  onClick={() => navigate("/driver/message-call")}
+                  onClick={() =>
+                    navigate(
+                      `/driver/message-call?bookingId=${currentRide?.id ? Number(currentRide.id) : ""}`
+                    )
+                  }
                   variant="outline"
                   className="flex-1"
                 >
@@ -147,23 +199,51 @@ export default function DriverRideInfoPage() {
             </div>
 
             {/* Arrival Button */}
+            {paymentReceived && (
+              <Card className="p-4 mb-4 bg-green-50 border-green-200">
+                <p className="text-sm font-semibold text-green-800">{t("paymentReceived")}</p>
+              </Card>
+            )}
+            {rideCompleted && !paymentReceived && (
+              <Card className="p-4 mb-4 bg-amber-50 border-amber-200">
+                <p className="text-sm font-semibold text-amber-800">{t("waitingForCustomerPayment")}</p>
+              </Card>
+            )}
+            {rideCompleted && (
+              <Button
+                variant="outline"
+                onClick={() => navigate("/driver/bill")}
+                className="w-full h-12 mb-3"
+              >
+                {t("viewDetails")}
+              </Button>
+            )}
             <Button
               onClick={async () => {
                 const bookingId = currentRide?.id ? Number(currentRide.id) : undefined;
-                if (bookingId) {
+                if (!bookingId) return;
+                setCompleting(true);
+                try {
+                  const result: any = await api.completeRide(bookingId);
+                  const data = result?.booking || result?.data || result;
                   try {
-                    await api.completeRide(bookingId);
-                    // store last completed booking id so bill page can load real data
-                    try { sessionStorage.setItem('last_completed_booking_id', String(bookingId)); } catch {}
-                  } catch (error) {
-                    console.error("Failed to complete ride on server", error);
-                  }
+                    sessionStorage.setItem("last_completed_booking_id", String(bookingId));
+                    if (data?.pickupAddress) {
+                      sessionStorage.setItem("last_completed_booking", JSON.stringify(data));
+                    }
+                  } catch {}
+                  setRideCompleted(true);
+                  navigate("/driver/bill");
+                } catch (error) {
+                  console.error("Failed to complete ride on server", error);
+                } finally {
+                  setCompleting(false);
                 }
-                navigate("/driver/bill");
               }}
-              className="w-full h-14 bg-green-600 hover:bg-green-700 text-white text-lg"
+              disabled={completing || rideCompleted}
+              className="w-full h-14 bg-green-600 hover:bg-green-700 text-white text-lg disabled:opacity-60"
             >
-              {t("completeRide")}
+              {rideCompleted ? t("waitingForCustomerPayment") : t("completeRide")}
             </Button>
 
             {/* Cancel Button */}
