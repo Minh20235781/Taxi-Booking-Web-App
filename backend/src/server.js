@@ -159,6 +159,31 @@ function normalizePaymentMethod(method) {
   return null;
 }
 
+/** Driver may start pickup within 30 minutes before scheduled time. */
+function canStartScheduledRide(scheduledAt) {
+  if (!scheduledAt) {
+    return true;
+  }
+  const start = new Date(scheduledAt).getTime();
+  return start - Date.now() <= 30 * 60 * 1000;
+}
+
+function parsePreferencesJson(raw) {
+  if (!raw) {
+    return { languages: [], ridePreferences: [], specialRequest: "" };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      languages: Array.isArray(parsed.languages) ? parsed.languages : [],
+      ridePreferences: Array.isArray(parsed.ridePreferences) ? parsed.ridePreferences : [],
+      specialRequest: typeof parsed.specialRequest === "string" ? parsed.specialRequest : ""
+    };
+  } catch {
+    return { languages: [], ridePreferences: [], specialRequest: "" };
+  }
+}
+
 function paymentMethodLabel(method, fallbackLabel) {
   if (fallbackLabel) {
     return String(fallbackLabel);
@@ -485,7 +510,7 @@ app.get("/rides/:rideId/messages", authRequired, async (req, res) => {
     return res.status(400).json({ message: "Invalid ride id" });
   }
 
-  const ride = await ensureDemoRide(rideId);
+  const ride = await prisma.ride.findUnique({ where: { id: rideId } });
   if (!ride) {
     return res.status(404).json({ message: "Ride not found" });
   }
@@ -555,6 +580,12 @@ app.post("/bookings/create-flow", authRequired, async (req, res) => {
   });
 });
 
+function stripEmptyFields(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined && value !== null && value !== "")
+  );
+}
+
 app.put("/driver/profile", authRequired, upload.fields([
   { name: 'vehiclePhoto', maxCount: 1 },
   { name: 'idCardFront', maxCount: 1 },
@@ -597,7 +628,7 @@ app.put("/driver/profile", authRequired, upload.fields([
       }
     }
 
-    const updateData = {
+    const updateData = stripEmptyFields({
       licenseNumber: data.licenseNumber,
       vehiclePlate: data.vehiclePlate,
       vehicleModel: data.vehicleModel,
@@ -613,7 +644,7 @@ app.put("/driver/profile", authRequired, upload.fields([
       bankName: data.bankName,
       accountNumber: data.accountNumber,
       accountHolderName: data.accountHolderName
-    };
+    });
 
     // Chỉ thêm isOnline nếu nó được gửi và có giá trị
     if (data.isOnline !== undefined && data.isOnline !== null) {
@@ -662,7 +693,7 @@ app.put("/driver/profile", authRequired, upload.fields([
     res.json({ message: "Profile updated successfully.", driverProfile });
   } catch (error) {
     console.error("Error updating driver profile:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: error.message || "Internal server error" });
   }
 });
 
@@ -705,15 +736,27 @@ app.get("/driver/ratings", authRequired, async (req, res) => {
     return res.json({
       averageRating: driverProfile.averageRating,
       total: ratings.length,
-      ratings: ratings.map((r) => ({
-        id: r.id,
-        rideId: r.rideId,
-        score: r.score,
-        comment: r.comment,
-        createdAt: r.createdAt,
-        riderName: r.user?.fullName || null,
-        riderAvatar: r.user?.avatarUrl || null
-      }))
+      ratings: ratings.map((r) => {
+        let compliments = [];
+        if (r.complimentsJson) {
+          try {
+            const parsed = JSON.parse(r.complimentsJson);
+            if (Array.isArray(parsed)) compliments = parsed;
+          } catch {
+            /* ignore */
+          }
+        }
+        return {
+          id: r.id,
+          rideId: r.rideId,
+          score: r.score,
+          comment: r.comment,
+          compliments,
+          createdAt: r.createdAt,
+          riderName: r.user?.fullName || null,
+          riderAvatar: r.user?.avatarUrl || null
+        };
+      })
     });
   } catch (error) {
     console.error("Error fetching driver ratings:", error);
@@ -747,6 +790,7 @@ app.get("/driver/pending-requests", authRequired, async (req, res) => {
     const bookings = await prisma.booking.findMany({
       where: {
         status: { in: ["REQUESTED", "SCHEDULED"] },
+        ride: null,
         NOT: driverProfileId
           ? {
               declinedRides: {
@@ -792,6 +836,17 @@ app.get("/bookings/with-ride/:id", authRequired, async (req, res) => {
       }
     });
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+    const userId = Number(req.auth.sub);
+    if (booking.userId !== userId) {
+      const driverProfile = await prisma.driverProfile.findUnique({ where: { userId } });
+      const isAssignedDriver =
+        driverProfile &&
+        booking.ride &&
+        booking.ride.driverProfileId === driverProfile.id;
+      if (!isAssignedDriver) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+    }
     res.json(booking);
   } catch (error) {
     console.error("Error fetching booking with ride:", error);
@@ -872,27 +927,49 @@ app.post("/driver/complete-ride/:bookingId", authRequired, async (req, res) => {
         }
       : null;
 
-    const updatedBooking = await prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: "COMPLETED", customerSnapshotJson: customerSnapshot ? JSON.stringify(customerSnapshot) : null }
-    });
-
     const ride = await prisma.ride.findFirst({
       where: { bookingId, driverProfileId: driverProfile.id }
     });
+    if (!ride) {
+      return res.status(404).json({ message: "Ride not found for this driver." });
+    }
 
-    if (ride) {
+    const now = new Date();
+    const finalFare = booking.estimatedFare ?? ride.finalFare ?? 0;
+
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        customerSnapshotJson: customerSnapshot ? JSON.stringify(customerSnapshot) : undefined
+      }
+    });
+
+    if (ride.status !== "COMPLETED") {
       await prisma.ride.update({
         where: { id: ride.id },
         data: {
           status: "COMPLETED",
-          completedAt: new Date(),
-          finalFare: booking.estimatedFare
+          endTime: now,
+          finalFare
         }
       });
     }
 
-    res.json({ message: "Ride completed successfully.", booking: updatedBooking });
+    const fullBooking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        user: true,
+        vehicleClass: true,
+        ride: {
+          include: {
+            driver: { include: { user: true } },
+            payment: true
+          }
+        }
+      }
+    });
+
+    res.json({ message: "Ride completed successfully.", booking: fullBooking });
   } catch (error) {
     console.error("Error completing ride:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -1003,6 +1080,123 @@ app.post("/bookings/:bookingId/confirm-payment", authRequired, async (req, res) 
   });
 });
 
+app.patch("/bookings/:bookingId/preferences", authRequired, async (req, res) => {
+  const bookingId = Number(req.params.bookingId);
+  if (!Number.isInteger(bookingId) || bookingId <= 0) {
+    return res.status(400).json({ message: "Invalid booking id" });
+  }
+
+  const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+  if (booking.userId !== Number(req.auth.sub)) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  if (["CANCELLED", "COMPLETED"].includes(booking.status)) {
+    return res.status(400).json({ message: "Cannot update preferences for this booking" });
+  }
+
+  const prefs = req.body?.preferences ?? req.body;
+  const preferencesJson = JSON.stringify({
+    languages: Array.isArray(prefs?.languages) ? prefs.languages : [],
+    ridePreferences: Array.isArray(prefs?.ridePreferences) ? prefs.ridePreferences : [],
+    specialRequest: typeof prefs?.specialRequest === "string" ? prefs.specialRequest : ""
+  });
+
+  const updated = await prisma.booking.update({
+    where: { id: bookingId },
+    data: { preferencesJson }
+  });
+
+  return res.json({ booking: updated });
+});
+
+app.post("/bookings/:bookingId/cancel", authRequired, async (req, res) => {
+  const bookingId = Number(req.params.bookingId);
+  if (!Number.isInteger(bookingId) || bookingId <= 0) {
+    return res.status(400).json({ message: "Invalid booking id" });
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    include: { ride: true }
+  });
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+  if (booking.userId !== Number(req.auth.sub)) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  if (["CANCELLED", "COMPLETED"].includes(booking.status)) {
+    return res.status(400).json({ message: "Booking already finished or cancelled" });
+  }
+  if (booking.ride && ["IN_PROGRESS", "COMPLETED", "DRIVER_EN_ROUTE", "ARRIVED"].includes(booking.ride.status)) {
+    return res.status(400).json({ message: "Ride already started; cannot cancel" });
+  }
+
+  if (booking.ride) {
+    await prisma.ride.delete({ where: { id: booking.ride.id } });
+  }
+
+  const updated = await prisma.booking.update({
+    where: { id: bookingId },
+    data: { status: "CANCELLED", cancelledAt: new Date() }
+  });
+
+  return res.json({ booking: updated });
+});
+
+// User's current in-progress instant booking (waiting or active ride)
+app.get("/bookings/my-active", authRequired, async (req, res) => {
+  try {
+    const userId = Number(req.auth.sub);
+    const booking = await prisma.booking.findFirst({
+      where: {
+        userId,
+        bookingType: "INSTANT",
+        status: { notIn: ["CANCELLED", "COMPLETED"] },
+        OR: [
+          { status: "REQUESTED" },
+          { status: "ACCEPTED" },
+          {
+            ride: {
+              status: { in: ["ACCEPTED", "DRIVER_EN_ROUTE", "ARRIVED", "IN_PROGRESS", "COMPLETED"] }
+            }
+          }
+        ]
+      },
+      include: {
+        vehicleClass: true,
+        ride: { include: { driver: { include: { user: true } } } }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (!booking) {
+      return res.json({ booking: null });
+    }
+
+    return res.json({
+      booking: {
+        id: booking.id,
+        status: booking.status,
+        pickupAddress: booking.pickupAddress,
+        destination: booking.destination,
+        bookingType: booking.bookingType,
+        hasDriver: Boolean(booking.ride),
+        rideStatus: booking.ride?.status || null,
+        driverName: booking.ride?.driver?.user?.fullName || null,
+        vehicleModel: booking.ride?.driver?.vehicleModel || null,
+        vehiclePlate: booking.ride?.driver?.vehiclePlate || null
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching active booking:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 io.on("connection", (socket) => {
   socket.on("join_ride", async (payload = {}, acknowledge) => {
     const rideId = Number(payload.rideId);
@@ -1039,7 +1233,7 @@ io.on("connection", (socket) => {
     }
 
     try {
-      const ride = await ensureDemoRide(rideId);
+      const ride = await prisma.ride.findUnique({ where: { id: rideId } });
       if (!ride) {
         acknowledge?.({ ok: false, message: "Ride not found" });
         return;
@@ -1246,6 +1440,7 @@ app.get("/bookings/my-upcoming", authRequired, async (req, res) => {
       where: {
         userId,
         bookingType: "SCHEDULED",
+        status: { in: ["SCHEDULED", "ACCEPTED"] },
         scheduledAt: { gt: now }
       },
       include: {
@@ -1257,10 +1452,13 @@ app.get("/bookings/my-upcoming", authRequired, async (req, res) => {
 
     const mapped = bookings.map((b) => {
       const dateObj = b.scheduledAt ? new Date(b.scheduledAt) : new Date();
-      const dateStr = dateObj.toISOString().slice(0, 10);
-      const timeStr = dateObj.toTimeString().slice(0, 5);
+      const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}-${String(dateObj.getDate()).padStart(2, "0")}`;
+      const timeStr = `${String(dateObj.getHours()).padStart(2, "0")}:${String(dateObj.getMinutes()).padStart(2, "0")}`;
       const vehicleType = b.vehicleClass?.name?.toLowerCase() || "economy";
-      
+      const driverAssigned = Boolean(b.ride);
+      const canCancel =
+        !b.ride || (b.ride.status === "ACCEPTED" && !canStartScheduledRide(b.scheduledAt));
+
       return {
         id: b.id,
         from: b.pickupAddress,
@@ -1269,8 +1467,11 @@ app.get("/bookings/my-upcoming", authRequired, async (req, res) => {
         time: timeStr,
         scheduledAt: b.scheduledAt,
         vehicle: vehicleType,
-        status: b.status,
-        rideStatus: b.ride?.status || null
+        bookingStatus: b.status,
+        rideStatus: b.ride?.status || null,
+        driverName: b.ride?.driver?.user?.fullName || null,
+        driverAssigned,
+        canCancel
       };
     });
 
@@ -1354,8 +1555,13 @@ app.get("/driver/accepted-rides", authRequired, async (req, res) => {
     const mapped = rides.map((r) => {
       const b = r.booking;
       const when = b.scheduledAt || b.createdAt;
-      const dateStr = when ? new Date(when).toISOString().slice(0, 10) : "";
-      const timeStr = when ? new Date(when).toISOString().slice(11, 16) : "";
+      let dateStr = "";
+      let timeStr = "";
+      if (when) {
+        const d = new Date(when);
+        dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        timeStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      }
 
       let prefs = [];
       let langs = [];
@@ -1369,8 +1575,11 @@ app.get("/driver/accepted-rides", authRequired, async (req, res) => {
         }
       }
 
+      const pref = parsePreferencesJson(b.preferencesJson);
+
       return {
         id: String(b.id),
+        rideId: r.id,
         date: dateStr,
         time: timeStr,
         scheduledAt: when,
@@ -1384,9 +1593,14 @@ app.get("/driver/accepted-rides", authRequired, async (req, res) => {
         distance: b.routeDistanceMeters ? `${Math.round(b.routeDistanceMeters / 1000)} km` : "",
         duration: b.routeDurationSeconds ? String(Math.round(b.routeDurationSeconds / 60)) : "",
         earnings: b.estimatedFare ? String(Math.round(b.estimatedFare)) : "",
-        languages: langs,
-        preferences: prefs,
-        specialRequest: null
+        languages: langs.length ? langs : pref.languages,
+        preferences: prefs.length ? prefs : pref.ridePreferences,
+        specialRequest: pref.specialRequest || null,
+        bookingType: b.bookingType,
+        bookingStatus: b.status,
+        rideStatus: r.status,
+        scheduledAt: b.scheduledAt,
+        canStart: canStartScheduledRide(b.scheduledAt)
       };
     });
 
@@ -1408,14 +1622,57 @@ app.post("/driver/cancel-acceptance/:bookingId", authRequired, async (req, res) 
     const ride = await prisma.ride.findFirst({ where: { bookingId, driverProfileId: driverProfile.id } });
     if (!ride) return res.status(404).json({ message: 'No accepted ride found for this driver.' });
 
-    // delete the ride and revert booking status so others can accept
-    await prisma.ride.delete({ where: { id: ride.id } });
-    await prisma.booking.update({ where: { id: bookingId }, data: { status: 'REQUESTED' } });
+    const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+    const nextStatus = booking?.bookingType === "SCHEDULED" ? "SCHEDULED" : "REQUESTED";
 
-    return res.json({ message: 'Acceptance cancelled.' });
+    await prisma.ride.delete({ where: { id: ride.id } });
+    await prisma.booking.update({ where: { id: bookingId }, data: { status: nextStatus } });
+
+    return res.json({ message: "Acceptance cancelled." });
   } catch (error) {
     console.error('Error cancelling acceptance:', error);
     return res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+app.post("/driver/start-scheduled-ride/:bookingId", authRequired, async (req, res) => {
+  const userId = Number(req.auth.sub);
+  const bookingId = Number(req.params.bookingId);
+
+  try {
+    const driverProfile = await prisma.driverProfile.findUnique({ where: { userId } });
+    if (!driverProfile) {
+      return res.status(404).json({ message: "Driver profile not found." });
+    }
+
+    const ride = await prisma.ride.findFirst({
+      where: { bookingId, driverProfileId: driverProfile.id },
+      include: { booking: true }
+    });
+    if (!ride) {
+      return res.status(404).json({ message: "No accepted ride found for this driver." });
+    }
+    if (ride.booking.bookingType !== "SCHEDULED") {
+      return res.status(400).json({ message: "Not a scheduled reservation." });
+    }
+    if (!canStartScheduledRide(ride.booking.scheduledAt)) {
+      return res.status(400).json({
+        message: "Too early to start. You can start within 30 minutes of the scheduled pickup time."
+      });
+    }
+
+    const updatedRide = await prisma.ride.update({
+      where: { id: ride.id },
+      data: {
+        status: "DRIVER_EN_ROUTE",
+        startedAt: ride.startedAt || new Date()
+      }
+    });
+
+    return res.json({ message: "Ride started.", ride: updatedRide, booking: ride.booking });
+  } catch (error) {
+    console.error("Error starting scheduled ride:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -1438,13 +1695,18 @@ app.post("/rides/:rideId/rating", authRequired, async (req, res) => {
     }
 
     // Create rating (one-per-ride constraint enforced by schema)
+    const complimentsJson =
+      Array.isArray(compliments) && compliments.length
+        ? JSON.stringify(compliments.filter((c) => typeof c === "string" && c.trim()))
+        : null;
+
     const rating = await prisma.rating.create({
       data: {
         rideId,
         userId,
         score: Number(score),
         comment: comment || null,
-        compliments: compliments ? JSON.stringify(compliments) : null
+        compliments: complimentsJson
       }
     });
 
