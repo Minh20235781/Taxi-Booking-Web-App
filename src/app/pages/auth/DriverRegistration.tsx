@@ -13,17 +13,72 @@ import {
 import { Car, ArrowLeft, Upload, Globe, X } from "lucide-react";
 import { Checkbox } from "../../components/ui/checkbox";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { api, setAuthToken } from "../../services/api";
+import { api, setAuthToken, getAuthToken } from "../../services/api";
+
+function ImageUploadField({
+  label,
+  preview,
+  optional,
+  aspectClass = "aspect-[4/3]",
+  onPick,
+  onRemove,
+  inputRef,
+  onChange,
+}: {
+  label: string;
+  preview: string;
+  optional?: boolean;
+  aspectClass?: string;
+  onPick: () => void;
+  onRemove: () => void;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const { t } = useLanguage();
+
+  return (
+    <div className="space-y-2">
+      <Label>
+        {label}
+        {optional ? ` (${t("optional")})` : ""}
+      </Label>
+      <input ref={inputRef} type="file" accept="image/*" onChange={onChange} className="hidden" />
+      {preview ? (
+        <div className={`relative group w-full ${aspectClass} bg-gray-100 rounded-lg border border-gray-300 overflow-hidden`}>
+          <img src={preview} alt={label} className="absolute inset-0 w-full h-full object-contain p-1" />
+          <button
+            type="button"
+            onClick={onRemove}
+            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onPick}
+          className={`w-full ${aspectClass} border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-2 hover:border-gray-400 cursor-pointer bg-gray-50 hover:bg-gray-100 transition px-4`}
+        >
+          <Upload className="h-8 w-8 text-gray-400 shrink-0" />
+          <p className="text-sm text-gray-600 text-center">{t("clickToUpload")}</p>
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function DriverRegistration() {
   const navigate = useNavigate();
   const { t, language, setLanguage } = useLanguage();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
     email: "",
     phone: "",
     password: "",
+    confirmPassword: "",
     licenseNumber: "",
     vehicleModel: "",
     vehiclePlate: "",
@@ -68,20 +123,6 @@ export default function DriverRegistration() {
     vietnamese: true,
   });
 
-  const readStoredUser = () => {
-    const raw = localStorage.getItem("auth_user") || localStorage.getItem("user");
-    if (!raw) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed?.user || parsed;
-    } catch {
-      return null;
-    }
-  };
-
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -122,25 +163,21 @@ export default function DriverRegistration() {
 
   const handleSubmit = async () => {
     try {
-      // Basic client-side validation
       const missing: string[] = [];
-      const authToken = localStorage.getItem("auth_token");
-      const storedAuthUser = readStoredUser() as { role?: string; email?: string } | null;
-
-      const isDriverSession = Boolean(authToken && storedAuthUser?.role === "DRIVER");
       if (!formData.email) missing.push("email");
-      // Only require password when we still need to create/login a driver account.
-      if (!isDriverSession && !formData.password) missing.push("password");
       if (!formData.phone) missing.push("phone");
-      if (missing.length) {
-        return alert(`Vui lòng nhập: ${missing.join(", ")}`);
+      if (!formData.firstName && !formData.lastName) missing.push("name");
+
+      if (!isAuthenticated) {
+        if (!formData.password) missing.push("password");
+        if (!formData.confirmPassword) missing.push("confirm password");
+        if (formData.password !== formData.confirmPassword) {
+          return alert("Mật khẩu xác nhận không khớp.");
+        }
       }
 
-      if (
-        storedAuthUser?.role === "USER" &&
-        storedAuthUser.email?.trim().toLowerCase() === formData.email.trim().toLowerCase()
-      ) {
-        return alert("Bạn đang đăng nhập bằng tài khoản khách. Hãy dùng email tài xế riêng hoặc đăng xuất rồi đăng ký tài xế.");
+      if (missing.length) {
+        return alert(`Vui lòng nhập: ${missing.join(", ")}`);
       }
 
       const langs: string[] = [];
@@ -150,8 +187,8 @@ export default function DriverRegistration() {
 
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
-      // Reuse an existing driver session; otherwise create/login a driver account first.
-      let token: string | undefined = isDriverSession ? authToken || undefined : undefined;
+      let token = getAuthToken() || undefined;
+
       if (!token) {
         try {
           const signupRes: any = await api.signup({
@@ -159,30 +196,32 @@ export default function DriverRegistration() {
             email: formData.email,
             phone: formData.phone,
             password: formData.password,
-            role: "DRIVER"
+            role: "DRIVER",
           });
-          token = signupRes?.token || signupRes?.data?.token || signupRes?.token;
-        } catch (e: any) {
-          // If signup fails because user exists, try login (only if password provided)
-          if (e && e.message && e.message.includes("Email already exists")) {
-            try {
-              const loginRes: any = await api.login({ email: formData.email, password: formData.password, role: "DRIVER" });
-              token = loginRes?.token || loginRes?.data?.token;
-            } catch (err: any) {
-              // Surface clearer message
-              throw new Error(err?.message || "Đăng nhập thất bại. Vui lòng kiểm tra email/mật khẩu.");
+          token = signupRes?.token;
+          if (token) setAuthToken(token);
+          if (signupRes?.user) {
+            localStorage.setItem("auth_user", JSON.stringify(signupRes.user));
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : "";
+          if (msg.includes("Email already exists")) {
+            const loginRes: any = await api.login({
+              email: formData.email,
+              password: formData.password,
+              role: "DRIVER",
+            });
+            token = loginRes?.token;
+            if (token) setAuthToken(token);
+            if (loginRes?.user) {
+              localStorage.setItem("auth_user", JSON.stringify(loginRes.user));
             }
           } else {
-            throw new Error(e?.message || "Đăng ký thất bại");
+            throw e;
           }
         }
       }
 
-      if (token) {
-        setAuthToken(token);
-      }
-
-      // Tạo FormData để gửi ảnh
       const formDataToSend = new FormData();
       formDataToSend.append('user', JSON.stringify({
         fullName,
@@ -219,21 +258,22 @@ export default function DriverRegistration() {
 
       // Gửi FormData qua fetch để hỗ trợ file upload
       const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+      const authHeader = getAuthToken();
       const response = await fetch(`${API_BASE_URL}/driver/profile`, {
         method: "PUT",
         headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
+          ...(authHeader ? { Authorization: `Bearer ${authHeader}` } : {}),
         },
-        body: formDataToSend
+        body: formDataToSend,
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || "Registration failed");
       }
 
       const me = await api.me();
-      localStorage.setItem("user", JSON.stringify(me.user || me));
+      localStorage.setItem("auth_user", JSON.stringify(me.user || me));
       navigate("/driver/home");
     } catch (error) {
       console.error(error);
@@ -241,17 +281,29 @@ export default function DriverRegistration() {
     }
   };
 
-  // Prefill email/phone if we have an authenticated user from previous step
+  // Prefill from authenticated user; detect login state
   useEffect(() => {
-    const stored = readStoredUser();
+    const token = getAuthToken();
+    setIsAuthenticated(Boolean(token));
+
+    const stored = localStorage.getItem("auth_user") || localStorage.getItem("user");
     if (stored) {
-      setFormData((prev) => ({
-        ...prev,
-        email: stored.email || prev.email,
-        phone: stored.phone || prev.phone,
-        firstName: stored.fullName ? String(stored.fullName).split(" ").slice(0, -1).join(" ") : prev.firstName,
-        lastName: stored.fullName ? String(stored.fullName).split(" ").slice(-1).join(" ") : prev.lastName,
-      }));
+      try {
+        const parsed = JSON.parse(stored);
+        setFormData((prev) => ({
+          ...prev,
+          email: parsed.email || prev.email,
+          phone: parsed.phone || prev.phone,
+          firstName: parsed.fullName
+            ? String(parsed.fullName).split(" ").slice(0, -1).join(" ")
+            : prev.firstName,
+          lastName: parsed.fullName
+            ? String(parsed.fullName).split(" ").slice(-1).join(" ")
+            : prev.lastName,
+        }));
+      } catch {
+        // ignore parse errors
+      }
     }
   }, []);
 
@@ -287,7 +339,7 @@ export default function DriverRegistration() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white z-50">
-              <SelectItem value="ja">???</SelectItem>
+              <SelectItem value="ja">日本語</SelectItem>
               <SelectItem value="en">English</SelectItem>
             </SelectContent>
           </Select>
@@ -307,6 +359,93 @@ export default function DriverRegistration() {
           </div>
 
           <div className="space-y-8">
+            {/* Account — step 1 for new drivers */}
+            <div>
+              <h3 className="font-bold text-lg mb-1">{t("accountInformation")}</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                {isAuthenticated ? t("driverAccountLoggedInNote") : t("driverAccountSectionNote")}
+              </p>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">{t("firstName")}</Label>
+                    <Input
+                      id="firstName"
+                      placeholder="太郎"
+                      className="bg-gray-100 border-none h-12"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      disabled={isAuthenticated}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">{t("lastName")}</Label>
+                    <Input
+                      id="lastName"
+                      placeholder="山田"
+                      className="bg-gray-100 border-none h-12"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      disabled={isAuthenticated}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">{t("emailAddress")}</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="example@email.com"
+                    className="bg-gray-100 border-none h-12"
+                    value={formData.email}
+                    onChange={handleChange}
+                    disabled={isAuthenticated}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">{t("phoneNumber")}</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="+84 123 456 789"
+                    className="bg-gray-100 border-none h-12"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    disabled={isAuthenticated}
+                  />
+                </div>
+
+                {!isAuthenticated && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="password">{t("password")}</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder={t("enterPassword")}
+                        className="bg-gray-100 border-none h-12"
+                        value={formData.password}
+                        onChange={handleChange}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        placeholder={t("reEnterPassword")}
+                        className="bg-gray-100 border-none h-12"
+                        value={formData.confirmPassword}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Bank Account Information */}
             <div>
               <h3 className="font-bold text-lg mb-4">
@@ -373,79 +512,25 @@ export default function DriverRegistration() {
                   />
                 </div>
 
-                {/* ID Card Front */}
-                <div className="space-y-2">
-                  <Label>{t("idCardFront")}</Label>
-                  <input
-                    ref={fileInputRefs.current.idCardFront}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload('idCardFront', e)}
-                    className="hidden"
-                  />
-                  {imagePreviews.idCardFront ? (
-                    <div className="relative group">
-                      <img 
-                        src={imagePreviews.idCardFront} 
-                        alt="ID Card Front Preview" 
-                        className="w-full h-48 object-cover rounded-lg border border-gray-300"
-                      />
-                      <button
-                        onClick={() => removeUploadedFile('idCardFront')}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div 
-                      onClick={() => triggerFileInput('idCardFront')}
-                      className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50 hover:bg-gray-100 transition"
-                    >
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm text-gray-600">
-                        {t("clickToUpload")}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                <ImageUploadField
+                  label={t("idCardFront")}
+                  preview={imagePreviews.idCardFront}
+                  aspectClass="aspect-[3/2]"
+                  inputRef={fileInputRefs.current.idCardFront}
+                  onChange={(e) => handleFileUpload("idCardFront", e)}
+                  onPick={() => triggerFileInput("idCardFront")}
+                  onRemove={() => removeUploadedFile("idCardFront")}
+                />
 
-                {/* ID Card Back */}
-                <div className="space-y-2">
-                  <Label>{t("idCardBack")}</Label>
-                  <input
-                    ref={fileInputRefs.current.idCardBack}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload('idCardBack', e)}
-                    className="hidden"
-                  />
-                  {imagePreviews.idCardBack ? (
-                    <div className="relative group">
-                      <img 
-                        src={imagePreviews.idCardBack} 
-                        alt="ID Card Back Preview" 
-                        className="w-full h-48 object-cover rounded-lg border border-gray-300"
-                      />
-                      <button
-                        onClick={() => removeUploadedFile('idCardBack')}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div 
-                      onClick={() => triggerFileInput('idCardBack')}
-                      className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50 hover:bg-gray-100 transition"
-                    >
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm text-gray-600">
-                        {t("clickToUpload")}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                <ImageUploadField
+                  label={t("idCardBack")}
+                  preview={imagePreviews.idCardBack}
+                  aspectClass="aspect-[3/2]"
+                  inputRef={fileInputRefs.current.idCardBack}
+                  onChange={(e) => handleFileUpload("idCardBack", e)}
+                  onPick={() => triggerFileInput("idCardBack")}
+                  onRemove={() => removeUploadedFile("idCardBack")}
+                />
               </div>
             </div>
 
@@ -467,41 +552,15 @@ export default function DriverRegistration() {
                     onChange={handleChange}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>{t("licensePhoto")}</Label>
-                  <input
-                    ref={fileInputRefs.current.licensePhoto}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload('licensePhoto', e)}
-                    className="hidden"
-                  />
-                  {imagePreviews.licensePhoto ? (
-                    <div className="relative group">
-                      <img 
-                        src={imagePreviews.licensePhoto} 
-                        alt="License Photo Preview" 
-                        className="w-full h-48 object-cover rounded-lg border border-gray-300"
-                      />
-                      <button
-                        onClick={() => removeUploadedFile('licensePhoto')}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div 
-                      onClick={() => triggerFileInput('licensePhoto')}
-                      className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50 hover:bg-gray-100 transition"
-                    >
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm text-gray-600">
-                        {t("clickToUpload")}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                <ImageUploadField
+                  label={t("licensePhoto")}
+                  preview={imagePreviews.licensePhoto}
+                  aspectClass="aspect-[3/2]"
+                  inputRef={fileInputRefs.current.licensePhoto}
+                  onChange={(e) => handleFileUpload("licensePhoto", e)}
+                  onPick={() => triggerFileInput("licensePhoto")}
+                  onRemove={() => removeUploadedFile("licensePhoto")}
+                />
               </div>
             </div>
 
@@ -574,41 +633,15 @@ export default function DriverRegistration() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>{t("vehiclePhoto")}</Label>
-                  <input
-                    ref={fileInputRefs.current.vehiclePhoto}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload('vehiclePhoto', e)}
-                    className="hidden"
-                  />
-                  {imagePreviews.vehiclePhoto ? (
-                    <div className="relative group">
-                      <img 
-                        src={imagePreviews.vehiclePhoto} 
-                        alt="Vehicle Photo Preview" 
-                        className="w-full h-48 object-cover rounded-lg border border-gray-300"
-                      />
-                      <button
-                        onClick={() => removeUploadedFile('vehiclePhoto')}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div 
-                      onClick={() => triggerFileInput('vehiclePhoto')}
-                      className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50 hover:bg-gray-100 transition"
-                    >
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm text-gray-600">
-                        {t("clickToUpload")}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                <ImageUploadField
+                  label={t("vehiclePhoto")}
+                  preview={imagePreviews.vehiclePhoto}
+                  aspectClass="aspect-video"
+                  inputRef={fileInputRefs.current.vehiclePhoto}
+                  onChange={(e) => handleFileUpload("vehiclePhoto", e)}
+                  onPick={() => triggerFileInput("vehiclePhoto")}
+                  onRemove={() => removeUploadedFile("vehiclePhoto")}
+                />
               </div>
             </div>
 
@@ -675,45 +708,16 @@ export default function DriverRegistration() {
                   </div>
                 </div>
 
-                {/* Language Certification Upload */}
-                <div className="space-y-2 pt-2">
-                  <Label>{t("languageCertification")}</Label>
-                  <input
-                    ref={fileInputRefs.current.languageCertification}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload('languageCertification', e)}
-                    className="hidden"
-                  />
-                  {imagePreviews.languageCertification ? (
-                    <div className="relative group">
-                      <img 
-                        src={imagePreviews.languageCertification} 
-                        alt="Language Certification Preview" 
-                        className="w-full h-48 object-cover rounded-lg border border-gray-300"
-                      />
-                      <button
-                        onClick={() => removeUploadedFile('languageCertification')}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div 
-                      onClick={() => triggerFileInput('languageCertification')}
-                      className="border border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 cursor-pointer bg-gray-50 hover:bg-gray-100 transition"
-                    >
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm text-gray-600">
-                        {t("clickToUpload")}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        ({t("optional")})
-                      </p>
-                    </div>
-                  )}
-                </div>
+                <ImageUploadField
+                  label={t("languageCertification")}
+                  preview={imagePreviews.languageCertification}
+                  aspectClass="aspect-[3/2]"
+                  optional
+                  inputRef={fileInputRefs.current.languageCertification}
+                  onChange={(e) => handleFileUpload("languageCertification", e)}
+                  onPick={() => triggerFileInput("languageCertification")}
+                  onRemove={() => removeUploadedFile("languageCertification")}
+                />
               </div>
             </div>
 

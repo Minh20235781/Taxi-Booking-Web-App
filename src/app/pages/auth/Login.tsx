@@ -161,8 +161,8 @@ export default function Login() {
                 </Button>
                 <div className="text-center text-sm">
                   <span className="text-gray-600">{t("dontHaveAccount")} </span>
-                  <Link to="/signup" className="text-black font-semibold underline">
-                    {t("signUp")}
+                  <Link to="/driver-registration" className="text-black font-semibold underline">
+                    {t("registerAsDriver")}
                   </Link>
                 </div>
               </div>
