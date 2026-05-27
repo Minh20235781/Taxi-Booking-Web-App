@@ -117,6 +117,42 @@ export function clearRecentCompletedBooking() {
   localStorage.removeItem(RECENT_COMPLETED_BOOKING_KEY);
 }
 
+const ACTIVE_BOOKING_KEY = "user_active_booking_id";
+
+export function setActiveBookingId(bookingId: number) {
+  localStorage.setItem(ACTIVE_BOOKING_KEY, String(bookingId));
+}
+
+export function getActiveBookingId(): number | null {
+  const raw = localStorage.getItem(ACTIVE_BOOKING_KEY);
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+export function clearActiveBookingId() {
+  localStorage.removeItem(ACTIVE_BOOKING_KEY);
+}
+
+/** Restore session draft from an existing booking id (e.g. user returns from home). */
+export async function restoreBookingFlowFromId(
+  bookingId: number,
+  fetchBooking: (id: number) => Promise<any>
+) {
+  const res = await fetchBooking(bookingId);
+  const booking = res?.data || res;
+  if (!booking?.id) return;
+
+  const current = getBookingFlowDraft();
+  saveBookingFlowDraft({
+    ...current,
+    bookingId: booking.id,
+    pickupText: booking.pickupAddress || current.pickupText,
+    destinationText: booking.destination || current.destinationText,
+    entryPoint: booking.bookingType === "SCHEDULED" ? "reservation" : "booking"
+  });
+  setActiveBookingId(booking.id);
+}
+
 /** ISO datetime for SCHEDULED bookings (reservation flow). */
 export function buildScheduledAtFromDraft(draft: BookingFlowDraft): string | undefined {
   if (!draft.reservationDate || !draft.reservationTime) {

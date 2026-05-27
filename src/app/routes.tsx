@@ -10,6 +10,7 @@ import VehicleSelectionPage from "./pages/user/VehicleSelectionPage";
 import PreferencePage from "./pages/user/PreferencePage";
 import PaymentMethodPage from "./pages/user/PaymentMethodPage";
 import DriverRequestPage from "./pages/user/DriverRequestPage";
+import ReservationStatusPage from "./pages/user/ReservationStatusPage";
 import RidePage from "./pages/user/RidePage";
 import UserMessageCallPage from "./pages/user/UserMessageCallPage";
 import UserBillPage from "./pages/user/UserBillPage";
@@ -76,6 +77,10 @@ export const router = createBrowserRouter([
       {
         path: "/user/driver-request",
         Component: DriverRequestPage,
+      },
+      {
+        path: "/user/reservation-status",
+        Component: ReservationStatusPage,
       },
       {
         path: "/user/ride",

@@ -20,7 +20,7 @@ export interface RideMessage {
 
 export type PaymentMethodCode = "MOMO" | "CASH" | "CARD";
 
-function getAuthToken() {
+export function getAuthToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY);
 }
 
@@ -143,13 +143,42 @@ export const api = {
   getDriverRatings: (limit = 10): Promise<{
     averageRating: number | null;
     total: number;
-    ratings: { id: number; rideId: number; score: number; comment: string | null; createdAt: string; riderName: string | null; riderAvatar: string | null }[];
+    ratings: { id: number; rideId: number; score: number; comment: string | null; compliments?: string[]; createdAt: string; riderName: string | null; riderAvatar: string | null }[];
   }> => request(`/driver/ratings?limit=${limit}`),
   getDriverAcceptedRides: () => request(`/driver/accepted-rides`),
   getRecentBookings: () => request(`/bookings/my-recent`),
   getCompletedRides: () => request(`/bookings/my-completed`),
   getUpcomingRides: () => request(`/bookings/my-upcoming`),
-  cancelBooking: (bookingId: number) => request(`/bookings/${bookingId}/cancel`, { method: "POST" }),
+  getActiveBooking: (): Promise<{
+    booking: {
+      id: number;
+      status: string;
+      pickupAddress: string;
+      destination: string;
+      bookingType?: string;
+      hasDriver: boolean;
+      rideStatus: string | null;
+      driverName: string | null;
+      vehicleModel: string | null;
+      vehiclePlate: string | null;
+    } | null;
+  }> => request(`/bookings/my-active`),
+  cancelBooking: (bookingId: number) =>
+    request(`/bookings/${bookingId}/cancel`, { method: "POST" }),
+  updateBookingPreferences: (
+    bookingId: number,
+    preferences: {
+      languages: string[];
+      ridePreferences: string[];
+      specialRequest: string;
+    }
+  ) =>
+    request(`/bookings/${bookingId}/preferences`, {
+      method: "PATCH",
+      body: JSON.stringify({ preferences })
+    }),
+  startScheduledRide: (bookingId: number) =>
+    request(`/driver/start-scheduled-ride/${bookingId}`, { method: "POST" }),
   updateBookingPaymentMethod: (
     bookingId: number,
     payload: { method: PaymentMethodCode; label?: string }
