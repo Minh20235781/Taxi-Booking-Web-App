@@ -935,12 +935,17 @@ app.post("/driver/complete-ride/:bookingId", authRequired, async (req, res) => {
     }
 
     const now = new Date();
-    const finalFare = booking.estimatedFare ?? ride.finalFare ?? 0;
+    const finalFare = Number(booking.estimatedFare ?? ride.finalFare ?? 0);
+    const method = normalizePaymentMethod(booking.paymentMethod) || "CASH";
+    const label = paymentMethodLabel(method, booking.paymentMethodLabel);
 
     await prisma.booking.update({
       where: { id: bookingId },
       data: {
-        customerSnapshotJson: customerSnapshot ? JSON.stringify(customerSnapshot) : undefined
+        customerSnapshotJson: customerSnapshot ? JSON.stringify(customerSnapshot) : undefined,
+        paymentMethod: method,
+        paymentMethodLabel: label,
+        status: "COMPLETED"
       }
     });
 
@@ -954,6 +959,28 @@ app.post("/driver/complete-ride/:bookingId", authRequired, async (req, res) => {
         }
       });
     }
+
+    await prisma.payment.upsert({
+      where: { rideId: ride.id },
+      create: {
+        rideId: ride.id,
+        method,
+        provider: method,
+        amount: finalFare,
+        currency: "VND",
+        status: "PAID",
+        externalId: method === "MOMO" ? `MOCK_MOMO_${Date.now()}` : null,
+        paidAt: now
+      },
+      update: {
+        method,
+        provider: method,
+        amount: finalFare,
+        currency: "VND",
+        status: "PAID",
+        paidAt: now
+      }
+    });
 
     const fullBooking = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -1107,41 +1134,6 @@ app.patch("/bookings/:bookingId/preferences", authRequired, async (req, res) => 
   const updated = await prisma.booking.update({
     where: { id: bookingId },
     data: { preferencesJson }
-  });
-
-  return res.json({ booking: updated });
-});
-
-app.post("/bookings/:bookingId/cancel", authRequired, async (req, res) => {
-  const bookingId = Number(req.params.bookingId);
-  if (!Number.isInteger(bookingId) || bookingId <= 0) {
-    return res.status(400).json({ message: "Invalid booking id" });
-  }
-
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
-    include: { ride: true }
-  });
-  if (!booking) {
-    return res.status(404).json({ message: "Booking not found" });
-  }
-  if (booking.userId !== Number(req.auth.sub)) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-  if (["CANCELLED", "COMPLETED"].includes(booking.status)) {
-    return res.status(400).json({ message: "Booking already finished or cancelled" });
-  }
-  if (booking.ride && ["IN_PROGRESS", "COMPLETED", "DRIVER_EN_ROUTE", "ARRIVED"].includes(booking.ride.status)) {
-    return res.status(400).json({ message: "Ride already started; cannot cancel" });
-  }
-
-  if (booking.ride) {
-    await prisma.ride.delete({ where: { id: booking.ride.id } });
-  }
-
-  const updated = await prisma.booking.update({
-    where: { id: bookingId },
-    data: { status: "CANCELLED", cancelledAt: new Date() }
   });
 
   return res.json({ booking: updated });
@@ -1501,8 +1493,14 @@ app.post("/bookings/:bookingId/cancel", authRequired, async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    if (booking.status === "COMPLETED") {
-      return res.status(400).json({ message: "Completed bookings cannot be cancelled" });
+    if (["CANCELLED", "COMPLETED"].includes(booking.status)) {
+      return res.status(400).json({ message: "Booking already finished or cancelled" });
+    }
+    if (
+      booking.ride &&
+      ["IN_PROGRESS", "COMPLETED", "DRIVER_EN_ROUTE", "ARRIVED"].includes(booking.ride.status)
+    ) {
+      return res.status(400).json({ message: "Ride already started; cannot cancel" });
     }
 
     const cancelledAt = new Date();
