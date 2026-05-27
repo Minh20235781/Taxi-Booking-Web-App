@@ -21,11 +21,26 @@ export default function DriverHomepage() {
   const { t } = useLanguage();
   const [isOnline, setIsOnline] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [scheduledRequestCount, setScheduledRequestCount] = useState(0);
   const [declinedRides, setDeclinedRides] = useState<number[]>([]);
   
   // State bổ sung để quản lý thông tin đánh giá sao động từ DB
   const [driverProfile, setDriverProfile] = useState<any>(null);
-  const [recentRatings, setRecentRatings] = useState<{ id: number; score: number; comment: string | null; createdAt: string; riderName: string | null; riderAvatar: string | null }[]>([]);
+  const [recentRatings, setRecentRatings] = useState<
+    { id: number; score: number; comment: string | null; compliments?: string[]; createdAt: string; riderName: string | null; riderAvatar: string | null }[]
+  >([]);
+
+  const complimentLabel = (key: string) => {
+    const map: Record<string, string> = {
+      friendly: t("friendlyDriver"),
+      clean: t("cleanVehicle"),
+      safe: t("safeDriving"),
+      onTime: t("onTime"),
+      conversation: t("greatConversation"),
+      smooth: t("smoothDriving"),
+    };
+    return map[key] || key;
+  };
 
   const loadRatings = () => {
     api.getDriverRatings(5)
@@ -74,22 +89,23 @@ export default function DriverHomepage() {
 
   useEffect(() => {
     let interval: number;
-    if (isOnline) {
-      const fetchRequests = async () => {
-        try {
-          const data = await api.getPendingRequests();
-          if (Array.isArray(data)) {
-            setPendingRequests(data);
-          } else if (data && Array.isArray(data.requests)) {
-            setPendingRequests(data.requests);
-          }
-        } catch (error) {
-          console.error(error);
+    const fetchRequests = async () => {
+      try {
+        const data = await api.getPendingRequests();
+        const requests = Array.isArray(data) ? data : data && Array.isArray(data.requests) ? data.requests : [];
+        setScheduledRequestCount(
+          requests.filter((req: any) => req.bookingType === "SCHEDULED").length
+        );
+        if (isOnline) {
+          setPendingRequests(requests);
         }
-      };
-      fetchRequests();
-      interval = window.setInterval(fetchRequests, 5000);
-    }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    fetchRequests();
+    interval = window.setInterval(fetchRequests, 5000);
     return () => clearInterval(interval);
   }, [isOnline]);
 
@@ -289,8 +305,13 @@ const formatEarnings = (value: any) => {
                   <Calendar className="h-8 w-8 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-bold text-xl mb-1">
+                  <h3 className="font-bold text-xl mb-1 flex items-center gap-2">
                     {t("reservations")}
+                    {scheduledRequestCount > 0 && (
+                      <span className="inline-flex min-w-6 h-6 items-center justify-center rounded-full bg-red-500 px-2 text-xs font-bold text-white">
+                        {scheduledRequestCount}
+                      </span>
+                    )}
                   </h3>
                   <p className="text-sm text-gray-600">
                     {t("viewAndAcceptScheduledRides")}
@@ -351,6 +372,15 @@ const formatEarnings = (value: any) => {
                     </div>
                     <div className="flex-1">
                       <p className="font-semibold mb-1">{r.riderName || t("anonymousRider")}</p>
+                      {r.compliments && r.compliments.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {r.compliments.map((tag) => (
+                            <span key={tag} className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">
+                              {complimentLabel(tag)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {r.comment ? (
                         <p className="text-sm text-gray-600">「{r.comment}」</p>
                       ) : null}

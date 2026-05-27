@@ -29,11 +29,9 @@ import { api } from "../../services/api";
 
 interface Reservation {
   id: string;
+  rideId?: number;
   date: string;
   time: string;
-  scheduledAt?: string;
-  bookingStatus: string;
-  rideStatus: string | null;
   customerName: string;
   customerAvatar: string;
   customerRating: number;
@@ -45,6 +43,10 @@ interface Reservation {
   languages: string[];
   preferences: string[];
   specialRequest?: string;
+  bookingType?: string;
+  rideStatus?: string;
+  canStart?: boolean;
+  scheduledAt?: string;
 }
 
 export default function DriverReservationAcceptPage() {
@@ -64,6 +66,7 @@ export default function DriverReservationAcceptPage() {
     useState<Reservation | null>(null);
   const [acceptedReservations, setAcceptedReservations] = useState<Reservation[]>([]);
   const [declinedReservations, setDeclinedReservations] = useState<string[]>([]);
+  const [highlightedReservationId, setHighlightedReservationId] = useState<string | null>(null);
 
   useEffect(() => {
     let interval: number;
@@ -84,20 +87,19 @@ export default function DriverReservationAcceptPage() {
             }
             let prefs = [];
             let langs = [];
+            let specialRequest: string | undefined;
             if (b.preferencesJson) {
               try {
                 const parsed = JSON.parse(b.preferencesJson);
                 if (Array.isArray(parsed.languages)) langs = parsed.languages;
                 if (Array.isArray(parsed.ridePreferences)) prefs = parsed.ridePreferences;
+                if (parsed.specialRequest) specialRequest = String(parsed.specialRequest);
               } catch {}
             }
             return {
               id: String(b.id),
               date: dateStr,
               time: timeStr,
-              scheduledAt: when,
-              bookingStatus: b.status,
-              rideStatus: b.ride?.status || null,
               customerName: b.user?.fullName || "",
               customerAvatar: b.user?.avatarUrl || null,
               customerRating: b.user?.averageRating || 0,
@@ -108,7 +110,8 @@ export default function DriverReservationAcceptPage() {
               earnings: b.estimatedFare ? String(Math.round(b.estimatedFare)) : "",
               languages: langs,
               preferences: prefs,
-              specialRequest: null
+              specialRequest,
+              scheduledAt: b.scheduledAt || null
             };
           });
           setAvailableReservations(mapped);
@@ -118,7 +121,9 @@ export default function DriverReservationAcceptPage() {
       // Fetch accepted rides for the driver
       api.getDriverAcceptedRides()
         .then((res) => {
-          const list = res || [];
+          const list = (res || []).filter(
+            (r: Reservation) => r.bookingType === "SCHEDULED" || Boolean(r.scheduledAt)
+          );
           setAcceptedReservations(list);
         })
         .catch((err) => console.error("Failed to fetch accepted rides:", err));
@@ -128,6 +133,40 @@ export default function DriverReservationAcceptPage() {
     interval = window.setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const key = "driver_30min_reminders";
+    const raw = localStorage.getItem(key);
+    let reminded: Record<string, boolean> = {};
+    try {
+      reminded = raw ? JSON.parse(raw) : {};
+    } catch {
+      reminded = {};
+    }
+
+    acceptedReservations.forEach((reservation) => {
+      if (!reservation.scheduledAt || reservation.rideStatus !== "ACCEPTED") return;
+      const minutesLeft = Math.round(
+        (new Date(reservation.scheduledAt).getTime() - Date.now()) / 60000
+      );
+      if (minutesLeft > 30 || minutesLeft < 0) return;
+      if (reminded[reservation.id]) return;
+      reminded[reservation.id] = true;
+      setHighlightedReservationId(reservation.id);
+      alert(
+        t("driverPickupReminder")
+          .replace("{name}", reservation.customerName || t("customer"))
+          .replace("{n}", String(Math.max(0, minutesLeft)))
+      );
+    });
+
+    localStorage.setItem(key, JSON.stringify(reminded));
+  }, [acceptedReservations, t]);
+
+  const getMinutesUntilStart = (scheduledAt?: string) => {
+    if (!scheduledAt) return null;
+    return Math.round((new Date(scheduledAt).getTime() - Date.now()) / 60000);
+  };
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -186,15 +225,16 @@ export default function DriverReservationAcceptPage() {
 
   const handleAccept = async (reservation: Reservation) => {
     try {
-      await api.acceptRide(Number(reservation.id));
-      setAcceptedReservations([
-        ...acceptedReservations,
-        reservation,
-      ]);
-      // remove from available immediately
+      const result: any = await api.acceptRide(Number(reservation.id));
+      const accepted: Reservation = {
+        ...reservation,
+        rideId: result?.ride?.id,
+        rideStatus: "ACCEPTED",
+        canStart: false
+      };
+      setAcceptedReservations([...acceptedReservations, accepted]);
       setAvailableReservations((prev) => prev.filter((r) => r.id !== reservation.id));
       setSelectedReservation(null);
-      alert(t("reservationAcceptedSuccessfully") || "Reservation accepted.");
     } catch (error) {
       console.error(error);
       const message = error?.message || (error && String(error)) || "Failed to accept reservation.";
@@ -209,6 +249,16 @@ export default function DriverReservationAcceptPage() {
       setDeclinedReservations([...declinedReservations, reservationId]);
     } catch (error) {
       console.error("Decline failed:", error);
+    }
+  };
+
+  const handleStartPickup = async (reservation: Reservation) => {
+    try {
+      await api.startScheduledRide(Number(reservation.id));
+      navigate(`/driver/ride-info?bookingId=${reservation.id}`);
+    } catch (error: any) {
+      const msg = error?.message || t("tooEarlyToStart");
+      alert(msg);
     }
   };
 
@@ -409,20 +459,12 @@ export default function DriverReservationAcceptPage() {
                                 {reservation.time}
                               </span>
                             </div>
-                            {reservation.bookingStatus === "CANCELLED" ? (
-                              <div className="flex items-center gap-1 bg-red-100 text-red-800 px-3 py-1 rounded-full">
-                                <span className="font-bold text-xs">
-                                  {t("userCancelled") || "User cancelled"}
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1 bg-green-100 text-green-800 px-3 py-1 rounded-full">
-                                <DollarSign className="h-4 w-4" />
-                                <span className="font-bold">
-                                  {reservation.earnings} VND
-                                </span>
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1 bg-green-100 text-green-800 px-3 py-1 rounded-full">
+                              <DollarSign className="h-4 w-4" />
+                              <span className="font-bold">
+                                {reservation.earnings} VND
+                              </span>
+                            </div>
                           </div>
 
                           {/* Customer */}
@@ -546,35 +588,29 @@ export default function DriverReservationAcceptPage() {
                             </div>
 
                             {/* Action Buttons */}
-                              {reservation.bookingStatus === "CANCELLED" ? (
-                                <Button variant="outline" className="h-10 w-full border-red-200 text-red-700" disabled>
-                                  {t("userCancelled") || "User cancelled"}
+                              <div className="grid grid-cols-2 gap-3">
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDecline(
+                                      reservation.id,
+                                    );
+                                  }}
+                                  variant="outline"
+                                  className="h-10"
+                                >
+                                  {t("decline")}
                                 </Button>
-                              ) : (
-                                <div className="grid grid-cols-2 gap-3">
-                                  <Button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDecline(
-                                        reservation.id,
-                                      );
-                                    }}
-                                    variant="outline"
-                                    className="h-10"
-                                  >
-                                    {t("decline")}
-                                  </Button>
-                                  <Button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAccept(reservation);
-                                    }}
-                                    className="h-10 bg-green-600 hover:bg-green-700 text-white"
-                                  >
-                                    {t("accept")}
-                                  </Button>
-                                </div>
-                              )}
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAccept(reservation);
+                                  }}
+                                  className="h-10 bg-green-600 hover:bg-green-700 text-white"
+                                >
+                                  {t("accept")}
+                                </Button>
+                              </div>
                             </>
                           )}
                         </Card>
@@ -606,7 +642,11 @@ export default function DriverReservationAcceptPage() {
                     {acceptedReservations.map((reservation) => (
                       <Card
                         key={reservation.id}
-                        className="p-4 border-2 border-green-200 bg-green-50"
+                        className={`p-4 border-2 ${
+                          highlightedReservationId === reservation.id
+                            ? "border-amber-300 bg-amber-50"
+                            : "border-green-200 bg-green-50"
+                        }`}
                       >
                         {/* Date and Time */}
                         <div className="flex items-center gap-2 mb-2">
@@ -618,11 +658,6 @@ export default function DriverReservationAcceptPage() {
                           <span className="text-sm font-semibold">
                             {reservation.time}
                           </span>
-                          {reservation.bookingStatus === "CANCELLED" && (
-                            <span className="ml-auto text-[11px] font-semibold bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                              {t("userCancelled") || "User cancelled"}
-                            </span>
-                          )}
                         </div>
 
                         {/* Customer */}
@@ -670,34 +705,48 @@ export default function DriverReservationAcceptPage() {
                           </span>
                         </div>
 
-                        {reservation.bookingStatus !== "CANCELLED" ? (
-                          <div className="flex gap-2">
-                            {reservation.scheduledAt && (new Date(reservation.scheduledAt).getTime() - Date.now() <= 60 * 60 * 1000) && (
+                        {(() => {
+                          const minutesUntilStart = getMinutesUntilStart(reservation.scheduledAt);
+                          const isStartable =
+                            Boolean(reservation.canStart) || reservation.rideStatus === "DRIVER_EN_ROUTE";
+
+                          return (
+                            <>
+                              {minutesUntilStart !== null &&
+                                reservation.rideStatus === "ACCEPTED" &&
+                                minutesUntilStart > 0 &&
+                                minutesUntilStart <= 30 && (
+                                  <p className="text-xs text-amber-700 mb-2 text-center font-semibold">
+                                    {t("pickupStartsSoon").replace("{n}", String(minutesUntilStart))}
+                                  </p>
+                                )}
                               <Button
-                                onClick={() => navigate("/driver/ride-info")}
-                                className="flex-1 text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white"
+                                onClick={() => handleStartPickup(reservation)}
+                                size="sm"
+                                className="w-full mb-2 bg-black hover:bg-gray-800 text-white text-xs h-8"
+                                disabled={!isStartable}
                               >
-                                {t("onRide")}
+                                {reservation.rideStatus === "DRIVER_EN_ROUTE"
+                                  ? t("trackRide")
+                                  : isStartable
+                                    ? t("startPickup")
+                                    : t("startPickupInMinutes").replace(
+                                        "{n}",
+                                        String(Math.max(1, minutesUntilStart ?? 0))
+                                      )}
                               </Button>
-                            )}
-                            <Button
-                              onClick={() =>
-                                handleCancelAcceptance(
-                                  reservation.id,
-                                )
-                              }
-                              variant="outline"
-                              size="sm"
-                              className="flex-1 text-xs h-8"
-                            >
-                              {t("cancelAcceptance")}
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="w-full text-center text-xs font-semibold text-red-700 bg-red-100 rounded-full py-2">
-                            {t("userCancelled") || "User cancelled"}
-                          </div>
-                        )}
+                            </>
+                          );
+                        })()}
+                        <Button
+                          onClick={() => handleCancelAcceptance(reservation.id)}
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs h-8"
+                          disabled={reservation.rideStatus === "DRIVER_EN_ROUTE"}
+                        >
+                          {t("cancelAcceptance")}
+                        </Button>
                       </Card>
                     ))}
                   </div>
