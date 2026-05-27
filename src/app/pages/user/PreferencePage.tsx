@@ -12,7 +12,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Languages, MessageSquare, Star, MapPin, Navigation, Search } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { getBookingFlowDraft, updateBookingFlowDraft } from "../../services/bookingFlow";
-import type { LocationSuggestion } from "../../services/api";
+import { api, type LocationSuggestion } from "../../services/api";
 
 export default function PreferencePage() {
   const navigate = useNavigate();
@@ -36,8 +36,10 @@ export default function PreferencePage() {
     aircon: true,
   });
   const [specialRequest, setSpecialRequest] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  const handleConfirmBooking = () => {
+  const handleConfirmBooking = async () => {
     if (!hasLockedRoute) {
       return;
     }
@@ -47,16 +49,32 @@ export default function PreferencePage() {
     const selectedRidePreferences = Object.entries(preferences)
       .filter(([, checked]) => checked)
       .map(([key]) => key);
+    const prefs = {
+      languages: selectedLanguages,
+      ridePreferences: selectedRidePreferences,
+      specialRequest: specialRequest.trim()
+    };
 
     updateBookingFlowDraft({
       pickupText: pickup.trim(),
       destinationText: destination.trim(),
-      preferences: {
-        languages: selectedLanguages,
-        ridePreferences: selectedRidePreferences,
-        specialRequest: specialRequest.trim()
-      }
+      preferences: prefs
     });
+
+    if (draft.bookingId) {
+      try {
+        setIsSaving(true);
+        setSaveError("");
+        await api.updateBookingPreferences(draft.bookingId, prefs);
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : "Could not save preferences.");
+        setIsSaving(false);
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
     navigate("/user/driver-request");
   };
 
@@ -236,13 +254,16 @@ export default function PreferencePage() {
             </Card>
 
             {/* Action Buttons */}
+            {saveError ? (
+              <p className="text-sm text-red-600 mb-3">{saveError}</p>
+            ) : null}
             <div className="space-y-3">
               <Button
                 onClick={handleConfirmBooking}
-                disabled={!hasLockedRoute}
+                disabled={!hasLockedRoute || isSaving}
                 className="w-full h-12 bg-black hover:bg-gray-800 text-white"
               >
-                {t("confirmBooking")}
+                {isSaving ? t("saving") : t("confirmBooking")}
               </Button>
               <Button
                 onClick={() => navigate("/user/payment-method")}

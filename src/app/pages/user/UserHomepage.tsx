@@ -5,21 +5,47 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Car, Clock, MapPin, History } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { clearBookingFlowDraft } from "../../services/bookingFlow";
+import { clearBookingFlowDraft, restoreBookingFlowFromId, clearActiveBookingId } from "../../services/bookingFlow";
 import { api } from "../../services/api";
+
+type ActiveBooking = {
+  id: number;
+  pickupAddress: string;
+  destination: string;
+  hasDriver: boolean;
+  rideStatus: string | null;
+  driverName: string | null;
+  vehicleModel: string | null;
+  vehiclePlate: string | null;
+};
 
 export default function UserHomepage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [recentRides, setRecentRides] = useState<any[]>([]);
+  const [upcomingReservations, setUpcomingReservations] = useState<any[]>([]);
+  const [activeBooking, setActiveBooking] = useState<ActiveBooking | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const loadActiveBooking = () => {
+    api
+      .getActiveBooking()
+      .then((res) => setActiveBooking(res.booking))
+      .catch(() => setActiveBooking(null));
+  };
 
   useEffect(() => {
     const fetchRecentBookings = async () => {
       try {
-        const data = await api.getRecentBookings();
-        if (Array.isArray(data)) {
-          setRecentRides(data);
+        const [recent, upcoming] = await Promise.all([
+          api.getRecentBookings().catch(() => []),
+          api.getUpcomingRides().catch(() => [])
+        ]);
+        if (Array.isArray(recent)) {
+          setRecentRides(recent);
+        }
+        if (Array.isArray(upcoming)) {
+          setUpcomingReservations(upcoming.slice(0, 3));
         }
       } catch (error) {
         console.error("Failed to fetch recent bookings:", error);
@@ -29,9 +55,42 @@ export default function UserHomepage() {
       }
     };
     fetchRecentBookings();
+    loadActiveBooking();
+    const poll = window.setInterval(loadActiveBooking, 5000);
+    return () => clearInterval(poll);
   }, []);
 
+  const continueActiveRide = async () => {
+    if (!activeBooking) return;
+    try {
+      await restoreBookingFlowFromId(activeBooking.id, api.getBookingWithRide);
+      navigate(`/user/ride?bookingId=${activeBooking.id}`);
+    } catch (error) {
+      console.error("Failed to resume ride:", error);
+    }
+  };
+
+  const cancelActiveBooking = async () => {
+    if (!activeBooking || !window.confirm(t("cancelRideConfirm"))) return;
+    try {
+      await api.cancelBooking(activeBooking.id);
+      clearActiveBookingId();
+      setActiveBooking(null);
+    } catch (error) {
+      console.error("Failed to cancel active booking:", error);
+    }
+  };
+
   const startBookNow = () => {
+    if (activeBooking) {
+      if (!window.confirm(t("cancelActiveBookingPrompt"))) return;
+      api.cancelBooking(activeBooking.id).finally(() => {
+        clearActiveBookingId();
+        clearBookingFlowDraft();
+        navigate("/user/booking");
+      });
+      return;
+    }
     clearBookingFlowDraft();
     navigate("/user/booking");
   };
@@ -52,6 +111,40 @@ export default function UserHomepage() {
             <h1 className="text-3xl font-bold mb-2">{t("whereToToday")}</h1>
             <p className="text-gray-600">{t("enterDestination")}</p>
           </div>
+
+          {activeBooking && (
+            <Card className="p-6 mb-8 border-2 border-black bg-white">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-500 mb-1">
+                    {activeBooking.rideStatus === "COMPLETED"
+                      ? t("activeRideAwaitingPayment")
+                      : activeBooking.hasDriver
+                      ? t("activeRideDriverFound")
+                      : t("activeRideWaiting")}
+                  </p>
+                  <p className="font-bold">{activeBooking.pickupAddress}</p>
+                  <p className="text-gray-600 text-sm">→ {activeBooking.destination}</p>
+                  {activeBooking.hasDriver && activeBooking.driverName && (
+                    <p className="text-sm mt-2">
+                      {t("driver")}: {activeBooking.driverName}
+                      {activeBooking.vehiclePlate ? ` • ${activeBooking.vehiclePlate}` : ""}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button onClick={continueActiveRide} className="bg-black hover:bg-gray-800 text-white">
+                    {t("continueRide")}
+                  </Button>
+                  {!activeBooking.hasDriver && (
+                    <Button variant="outline" onClick={cancelActiveBooking} className="text-red-600 border-red-600">
+                      {t("cancelRide")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
 
           {/* Main Actions */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -109,6 +202,39 @@ export default function UserHomepage() {
               </Card>
             </div>
           </div>
+
+          {upcomingReservations.length > 0 && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">{t("upcomingReservations")}</h2>
+                <Button variant="ghost" onClick={() => navigate("/user/history")}>
+                  {t("viewAll")}
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {upcomingReservations.map((item) => (
+                  <Card
+                    key={item.id}
+                    className="p-5 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => navigate(`/user/reservation-status?bookingId=${item.id}`)}
+                  >
+                    <div className="flex justify-between items-start gap-4">
+                      <div>
+                        <p className="font-semibold">{item.to}</p>
+                        <p className="text-sm text-gray-600">
+                          {item.date} {item.time}
+                        </p>
+                        <p className="text-sm mt-1">
+                          {item.driverAssigned ? t("driverAssigned") : t("waitingForDriver")}
+                        </p>
+                      </div>
+                      <Clock className="h-5 w-5 text-blue-600 shrink-0" />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Recent Rides */}
           <div>

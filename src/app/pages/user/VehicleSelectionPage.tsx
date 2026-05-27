@@ -12,6 +12,7 @@ import { api, type LocationSuggestion } from "../../services/api";
 import {
   buildScheduledAtFromDraft,
   getBookingFlowDraft,
+  setActiveBookingId,
   updateBookingFlowDraft
 } from "../../services/bookingFlow";
 import { calculateFare, fetchFareEstimate, formatVnd } from "../../services/pricing";
@@ -125,6 +126,9 @@ export default function VehicleSelectionPage() {
             }
           : null
       });
+      if (result.booking?.id) {
+        setActiveBookingId(result.booking.id);
+      }
       navigate("/user/payment-method");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Không thể tạo booking.");
