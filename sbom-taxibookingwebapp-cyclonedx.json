@@ -18408,6 +18408,26 @@
           "value": "\\package-lock.json"
         }
       ]
+    },
+    {
+      "bom-ref": "pkg:npm/example-analytics-sdk@1.0.0",
+      "type": "library",
+      "name": "example-analytics-sdk",
+      "version": "1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:npm/example-analytics-sdk@1.0.0",
+      "properties": [
+        {
+          "name": "syft:package:source",
+          "value": "manual-edit"
+        }
+      ]
     }
   ],
   "dependencies": [
@@ -19945,6 +19965,12 @@
       "ref": "pkg:npm/warning@4.0.3?package-id=571ad4c9fdbd0830",
       "dependsOn": [
         "pkg:npm/loose-envify@1.4.0?package-id=3cbc13c275115917"
+      ]
+    },
+    {
+      "ref": "af63bd4c8601b7f1",
+      "dependsOn": [
+        "pkg:npm/example-analytics-sdk@1.0.0"
       ]
     }
   ]

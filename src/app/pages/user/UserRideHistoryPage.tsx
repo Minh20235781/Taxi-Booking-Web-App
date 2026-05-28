@@ -10,6 +10,9 @@ import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft, getRecentCompletedBooking, updateBookingFlowDraft } from "../../services/bookingFlow";
 import { api } from "../../services/api";
 
+const DEFAULT_LAT = 35.6812;
+const DEFAULT_LNG = 139.7671;
+
 export default function UserRideHistoryPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -90,14 +93,14 @@ export default function UserRideHistoryPage() {
       pickupSelection: {
         placeId: "book-again-pickup",
         label: ride.from,
-        lat: ride.pickupLat || parseFloat(import.meta.env.VITE_DEFAULT_LAT || "35.6812"),
-        lon: ride.pickupLng || parseFloat(import.meta.env.VITE_DEFAULT_LNG || "139.7671")
+        lat: ride.pickupLat || DEFAULT_LAT,
+        lon: ride.pickupLng || DEFAULT_LNG
       },
       destinationSelection: {
         placeId: "book-again-dest",
         label: ride.to,
-        lat: ride.destinationLat || parseFloat(import.meta.env.VITE_DEFAULT_LAT || "35.6812"),
-        lon: ride.destinationLng || parseFloat(import.meta.env.VITE_DEFAULT_LNG || "139.7671")
+        lat: ride.destinationLat || DEFAULT_LAT,
+        lon: ride.destinationLng || DEFAULT_LNG
       }
     });
     navigate("/user/booking");
@@ -125,16 +128,6 @@ export default function UserRideHistoryPage() {
       vehicle: ride.vehicle ? { code: ride.vehicle, name: ride.vehicle, capacity: "", eta: "", price: ride.price } : undefined
     });
     navigate("/user/ride");
-  };
-
-  const handleCancelReservation = async (ride: any) => {
-    try {
-      await api.cancelBooking(Number(ride.id));
-      setUpcomingRides((prev) => prev.filter((item) => item.id !== ride.id));
-    } catch (error) {
-      console.error("Failed to cancel reservation:", error);
-      alert(error instanceof Error ? error.message : "Failed to cancel reservation.");
-    }
   };
 
   // Filter rides based on search query
