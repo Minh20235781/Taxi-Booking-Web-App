@@ -22,10 +22,10 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
 }
 
-function toUiMessage(msg: RideMessage, selfRole: "USER" | "DRIVER"): ChatUiMessage {
+function toUiMessage(msg: RideMessage, selfUserId: number): ChatUiMessage {
   return {
     id: msg.id,
-    sender: msg.senderRole === selfRole ? "self" : "peer",
+    sender: msg.senderUserId === selfUserId ? "self" : "peer",
     text: msg.body,
     translated: msg.translatedBody ?? null,
     time: formatTime(msg.createdAt)
@@ -45,11 +45,11 @@ export function useRideChat(bookingId: number, options?: { enabled?: boolean }) 
 
   const appendMessage = useCallback(
     (msg: RideMessage) => {
-      if (!selfRole || seenIds.current.has(msg.id)) return;
+      if (!selfUserId || seenIds.current.has(msg.id)) return;
       seenIds.current.add(msg.id);
-      setMessages((prev) => [...prev, toUiMessage(msg, selfRole)]);
+      setMessages((prev) => [...prev, toUiMessage(msg, selfUserId)]);
     },
-    [selfRole]
+    [selfUserId]
   );
 
   useEffect(() => {
@@ -64,6 +64,7 @@ export function useRideChat(bookingId: number, options?: { enabled?: boolean }) 
     setMessages([]);
     setLoading(true);
     setError("");
+    let unsubscribe = () => {};
 
     (async () => {
       try {
@@ -79,13 +80,17 @@ export function useRideChat(bookingId: number, options?: { enabled?: boolean }) 
         if (!mounted) return;
         setRideId(rid);
 
-        const history = await api.getRideMessages(rid);
-        if (!mounted) return;
-        history.messages.forEach((m) => appendMessage(m));
+        unsubscribe = subscribeRideMessages((msg) => {
+          if (mounted && msg.rideId === rid) appendMessage(msg);
+        });
 
         await joinRideRoom(rid);
         if (!mounted) return;
         setConnected(true);
+
+        const history = await api.getRideMessages(rid);
+        if (!mounted) return;
+        history.messages.forEach((m) => appendMessage(m));
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err.message : "Failed to connect chat");
@@ -94,10 +99,6 @@ export function useRideChat(bookingId: number, options?: { enabled?: boolean }) 
         if (mounted) setLoading(false);
       }
     })();
-
-    const unsubscribe = subscribeRideMessages((msg) => {
-      if (mounted) appendMessage(msg);
-    });
 
     return () => {
       mounted = false;
@@ -109,14 +110,16 @@ export function useRideChat(bookingId: number, options?: { enabled?: boolean }) 
     async (body: string) => {
       const text = body.trim();
       if (!text || !rideId || !selfRole || !selfUserId) return;
-      await sendRideMessage({
+      const message = await sendRideMessage({
         rideId,
         senderUserId: selfUserId,
         senderRole: selfRole,
         body: text
       });
+
+      appendMessage(message);
     },
-    [rideId, selfRole, selfUserId]
+    [rideId, selfRole, selfUserId, appendMessage]
   );
 
   const applyTranslations = useCallback((updates: Map<number, string>) => {

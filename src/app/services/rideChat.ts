@@ -2,12 +2,29 @@ import { io, type Socket } from "socket.io-client";
 import { API_BASE_URL, type RideMessage } from "./api";
 
 let socket: Socket | null = null;
+const joinedRideIds = new Set<number>();
+
+function emitJoinRide(s: Socket, rideId: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    s.emit("join_ride", { rideId }, (res: { ok?: boolean; message?: string }) => {
+      if (res?.ok) resolve();
+      else reject(new Error(res?.message || "Failed to join ride room"));
+    });
+  });
+}
 
 export function getRideChatSocket(): Socket {
   if (!socket) {
     socket = io(API_BASE_URL, {
       transports: ["websocket", "polling"],
       autoConnect: true
+    });
+    socket.on("connect", () => {
+      joinedRideIds.forEach((rideId) => {
+        emitJoinRide(socket as Socket, rideId).catch((err) => {
+          console.error("Failed to rejoin ride chat room:", err);
+        });
+      });
     });
   }
   return socket;
@@ -18,6 +35,7 @@ export function disconnectRideChatSocket() {
     socket.disconnect();
     socket = null;
   }
+  joinedRideIds.clear();
 }
 
 export function joinRideRoom(rideId: number): Promise<void> {
@@ -25,12 +43,8 @@ export function joinRideRoom(rideId: number): Promise<void> {
   if (!s.connected) {
     s.connect();
   }
-  return new Promise((resolve, reject) => {
-    s.emit("join_ride", { rideId }, (res: { ok?: boolean; message?: string }) => {
-      if (res?.ok) resolve();
-      else reject(new Error(res?.message || "Failed to join ride room"));
-    });
-  });
+  joinedRideIds.add(rideId);
+  return emitJoinRide(s, rideId);
 }
 
 export function sendRideMessage(payload: {
