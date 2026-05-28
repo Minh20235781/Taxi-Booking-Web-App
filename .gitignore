@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.local
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+backend/.env
+!backend/.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor & IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma / SQLite (local DB — do not commit)
+backend/prisma/*.db
+backend/prisma/*.db-journal
+*.sqlite
+*.sqlite3
+
+# Testing & coverage
+coverage/
+.nyc_output/
+
+# Misc
+.cache/
+.turbo/
+*.tsbuildinfo
