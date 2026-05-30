@@ -60,7 +60,7 @@ export default function ReservationStatusPage() {
     };
 
     load();
-    const interval = window.setInterval(load, 5000);
+    const interval = window.setInterval(load, 3000);
     return () => {
       mounted = false;
       clearInterval(interval);
