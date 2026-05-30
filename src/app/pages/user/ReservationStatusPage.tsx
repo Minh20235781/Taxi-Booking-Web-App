@@ -17,6 +17,7 @@ import {
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api } from "../../services/api";
 import { clearBookingFlowDraft, getBookingFlowDraft } from "../../services/bookingFlow";
+import { getRideChatSocket } from "../../services/rideChat";
 import {
   formatScheduledLocal,
   getReservationPhase,
@@ -36,6 +37,38 @@ export default function ReservationStatusPage() {
   const [error, setError] = useState("");
   const previousPhaseRef = useRef<string | null>(null);
   const hasShownThirtyMinNoticeRef = useRef(false);
+
+  useEffect(() => {
+    if (!bookingId) {
+      return;
+    }
+
+    const socket = getRideChatSocket();
+    const handleRideStatusChanged = async (data: { bookingId?: number; status?: string }) => {
+      if (Number(data?.bookingId) !== bookingId || data?.status !== "ACCEPTED") {
+        return;
+      }
+
+      try {
+        const active = await api.getActiveBooking();
+        if (Number(active.booking?.id) !== bookingId || !active.booking?.hasDriver) {
+          return;
+        }
+
+        const updated = await api.getBookingWithRide(bookingId);
+        setBooking(updated as ReservationBookingView);
+        setError("");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("loadFailed"));
+      }
+    };
+
+    socket.on("ride_status_changed", handleRideStatusChanged);
+
+    return () => {
+      socket.off("ride_status_changed", handleRideStatusChanged);
+    };
+  }, [bookingId, t]);
 
   useEffect(() => {
     if (!bookingId) {

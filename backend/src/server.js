@@ -895,6 +895,8 @@ app.post("/driver/accept-ride/:bookingId", authRequired, async (req, res) => {
       }
     });
 
+    io.emit("ride_status_changed", { bookingId, status: "ACCEPTED" });
+
     res.json({ message: "Ride accepted successfully.", booking: updatedBooking, ride });
   } catch (error) {
     console.error("Error accepting ride:", error);
