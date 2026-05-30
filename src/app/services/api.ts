@@ -1,4 +1,22 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const LOCAL_API_FALLBACK_URL = "http://localhost:4000";
+
+function resolveApiBaseUrl() {
+  const configuredApiBaseUrl = (
+    import.meta.env.VITE_API_BASE_URL ||
+    import.meta.env.VITE_API_URL ||
+    ""
+  ).trim();
+  const baseUrl = configuredApiBaseUrl || (import.meta.env.DEV ? LOCAL_API_FALLBACK_URL : "");
+
+  if (!baseUrl) {
+    console.error("Missing VITE_API_BASE_URL in production. Configure it in your deployment environment.");
+    return "";
+  }
+
+  return baseUrl.replace(/\/+$/, "");
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 const AUTH_TOKEN_KEY = "auth_token";
 
 export interface LocationSuggestion {
@@ -33,6 +51,10 @@ export function clearAuthToken() {
 }
 
 async function request(path: string, options: RequestInit = {}) {
+  if (!API_BASE_URL) {
+    throw new Error("API URL is not configured. Set VITE_API_BASE_URL and redeploy frontend.");
+  }
+
   const token = getAuthToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {

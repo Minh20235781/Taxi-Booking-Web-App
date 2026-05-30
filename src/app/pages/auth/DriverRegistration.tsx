@@ -13,7 +13,7 @@ import {
 import { Car, ArrowLeft, Upload, Globe, X } from "lucide-react";
 import { Checkbox } from "../../components/ui/checkbox";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { api, setAuthToken, getAuthToken } from "../../services/api";
+import { api, API_BASE_URL, setAuthToken, getAuthToken } from "../../services/api";
 
 function ImageUploadField({
   label,
@@ -257,7 +257,6 @@ export default function DriverRegistration() {
       }
 
       // Gửi FormData qua fetch để hỗ trợ file upload
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
       const authHeader = getAuthToken();
       const response = await fetch(`${API_BASE_URL}/driver/profile`, {
         method: "PUT",

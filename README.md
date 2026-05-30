@@ -16,7 +16,8 @@ Taxi Booking Web App is a full-stack ride booking platform with a Vite frontend,
 
 Frontend:
 
-- `VITE_API_BASE_URL`
+- `VITE_API_BASE_URL` (preferred)
+- `VITE_API_URL` (compatible alias)
 
 Backend:
 
@@ -75,6 +76,14 @@ npm run start
 ```
 
 Before deploy, update the frontend `.env` so `VITE_API_BASE_URL` points to the deployed backend URL.
+
+For Vercel deployments, add `VITE_API_BASE_URL` (or `VITE_API_URL`) in Project Settings -> Environment Variables (for Preview and Production), then redeploy.
+
+Example:
+
+```bash
+VITE_API_BASE_URL=https://your-backend-domain.com
+```
 
 Only run `npm run seed` when you need to populate fresh data.
 

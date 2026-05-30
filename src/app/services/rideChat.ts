@@ -15,6 +15,10 @@ function emitJoinRide(s: Socket, rideId: number): Promise<void> {
 
 export function getRideChatSocket(): Socket {
   if (!socket) {
+    if (!API_BASE_URL) {
+      throw new Error("API URL is not configured. Set VITE_API_BASE_URL and redeploy frontend.");
+    }
+
     socket = io(API_BASE_URL, {
       transports: ["websocket", "polling"],
       autoConnect: true
