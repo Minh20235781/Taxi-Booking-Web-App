@@ -6,10 +6,15 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "start:prod": "prisma migrate deploy && node src/server.js",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "node prisma/seed.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

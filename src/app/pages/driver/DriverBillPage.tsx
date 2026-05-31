@@ -78,8 +78,6 @@ export default function DriverBillPage() {
     (payment?.amount as number) ||
     0;
   const subtotal = fareAmount ? Math.round(fareAmount) : 0;
-  const commission = Math.round(subtotal * 0.2);
-  const yourEarnings = subtotal - commission;
   const baseFare = vehicleClass?.baseFare ? Math.round(vehicleClass.baseFare as number) : null;
   const tollFee = booking?.tollFee != null ? Math.round(booking.tollFee as number) : null;
   const tip = payment?.tipAmount != null ? Math.round(payment.tipAmount as number) : null;
@@ -191,19 +189,10 @@ export default function DriverBillPage() {
                 <span className="font-semibold text-green-600">{tip != null ? `${tip.toLocaleString()} VND` : "-"}</span>
               </div>
               <Separator />
-              <div className="flex justify-between">
-                <span className="text-gray-600">{t("subtotal")}</span>
-                <span className="font-semibold">{subtotal ? `${subtotal.toLocaleString()} VND` : "-"}</span>
-              </div>
-              <div className="flex justify-between text-red-600">
-                <span>{t("commission")} (20%)</span>
-                <span className="font-semibold">-{commission ? `${commission.toLocaleString()} VND` : "-"}</span>
-              </div>
-              <Separator />
               <div className="flex justify-between text-lg">
-                <span className="font-bold">{t("yourEarnings")}</span>
+                <span className="font-bold">{t("total")}</span>
                 <span className="font-bold text-green-600">
-                  {yourEarnings ? `${yourEarnings.toLocaleString()} VND` : "-"}
+                  {subtotal ? `${subtotal.toLocaleString()} VND` : "-"}
                 </span>
               </div>
             </div>

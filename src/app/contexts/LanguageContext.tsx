@@ -265,7 +265,6 @@ const translations = {
     estimatedFare: "予想料金",
     safetyNote: "乗車情報は家族や友人と共有できます",
     shareTrip: "乗車情報を共有",
-    cancelRide: "乗車をキャンセル",
     message: "メッセージ",
     call: "通話",
     phone: "電話",
@@ -490,7 +489,6 @@ const translations = {
     pageNotFound: "ページが見つかりません",
     pageNotFoundDesc:
       "探しのページは存在しないか、移動した可能性があります。",
-    backToHome: "ホームに戻る",
 
     // Driver Reservation Accept Page
     reservations: "予約リスト",
@@ -753,7 +751,6 @@ const translations = {
     safetyNote:
       "You can share your trip information with family and friends",
     shareTrip: "Share Trip",
-    cancelRide: "Cancel Ride",
     message: "Message",
     call: "Call",
     phone: "Phone",
@@ -982,7 +979,6 @@ const translations = {
     pageNotFound: "Page Not Found",
     pageNotFoundDesc:
       "The page you're looking for doesn't exist or has been moved.",
-    backToHome: "Back to Home",
 
     // Driver Reservation Accept Page
     reservations: "Reservation List",

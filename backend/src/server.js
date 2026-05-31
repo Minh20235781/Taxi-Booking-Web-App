@@ -22,17 +22,30 @@ import {
 } from "./services/bookingPayload.js";
 
 const prisma = new PrismaClient();
+const PORT = Number(process.env.PORT || 4000);
+const JWT_SECRET = process.env.JWT_SECRET || "dev_jwt_secret_change_me";
+const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY || "";
+
+function resolveCorsOrigins() {
+  const raw = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "";
+  const origins = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return origins.length ? origins : null;
+}
+
+const corsOrigins = resolveCorsOrigins();
+const corsOptions = corsOrigins ? { origin: corsOrigins, credentials: true } : {};
+
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: corsOrigins || "*",
     methods: ["GET", "POST"]
   }
 });
-const PORT = Number(process.env.PORT || 4000);
-const JWT_SECRET = process.env.JWT_SECRET || "dev_jwt_secret_change_me";
-const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY || "";
 
 const DEFAULT_VEHICLE_CLASSES = [
   {
@@ -61,11 +74,15 @@ const DEFAULT_VEHICLE_CLASSES = [
   }
 ];
 
-app.use(cors());
+app.use(cors(corsOptions));
 
 // SỬA LỖI 2: Tăng giới hạn dung lượng nhận dữ liệu lên 10MB để thoải mái nhận chuỗi ảnh Base64 từ Frontend
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "taxi-booking-api" });
+});
 
 // Cấu hình multer cho upload ảnh
 const upload = multer({
@@ -320,10 +337,6 @@ async function ensureDemoRide(rideId) {
     }
   });
 }
-
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
-});
 
 app.post("/auth/signup", async (req, res) => {
   const { fullName, email, phone, password, role } = req.body;
@@ -1295,23 +1308,6 @@ Object.entries(modelMap).forEach(([routeName, modelName]) => {
   });
 });
 
-app.use((error, _req, res, _next) => {
-  console.error(error);
-  return res.status(500).json({ message: "Internal server error" });
-});
-
-async function startServer() {
-  await ensureDefaultVehicleClasses();
-  server.listen(PORT, () => {
-    console.log(`Backend running at http://localhost:${PORT}`);
-  });
-}
-
-startServer().catch((error) => {
-  console.error("Failed to start backend:", error);
-  process.exit(1);
-});
-
 app.post("/driver/decline-ride/:bookingId", authRequired, async (req, res) => {
   const userId = Number(req.auth.sub);
   const bookingId = Number(req.params.bookingId);
@@ -1743,4 +1739,21 @@ app.post("/rides/:rideId/rating", authRequired, async (req, res) => {
     console.error("Error submitting rating:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
+});
+
+app.use((error, _req, res, _next) => {
+  console.error(error);
+  return res.status(500).json({ message: "Internal server error" });
+});
+
+async function startServer() {
+  await ensureDefaultVehicleClasses();
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Backend running on port ${PORT}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error("Failed to start backend:", error);
+  process.exit(1);
 });

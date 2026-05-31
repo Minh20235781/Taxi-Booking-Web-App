@@ -1,4 +1,4 @@
-// SQLite — status/type fields use String (no native enums).
+// PostgreSQL — status/type fields use String (no native enums).
 // Booking status: REQUESTED | SCHEDULED | CONFIRMED | ASSIGNED | CANCELLED | COMPLETED
 // Booking type: INSTANT | SCHEDULED
 // Ride status: REQUESTED | ACCEPTED | DRIVER_EN_ROUTE | ARRIVED | IN_PROGRESS | COMPLETED | CANCELLED
@@ -10,8 +10,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

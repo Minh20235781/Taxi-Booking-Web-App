@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: taxi-booking-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run prisma:generate
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
