@@ -18,6 +18,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { logout } from "../../utils/auth";
 
 function formatMemberSince(createdAt?: string, locale = "ja-JP") {
   if (!createdAt) return "—";
@@ -176,7 +177,14 @@ export default function UserProfilePage() {
           </div>
 
           <div className="mt-6">
-            <Button onClick={() => navigate("/login")} variant="outline" className="w-full h-12">
+            <Button
+              onClick={() => {
+                logout();
+                navigate("/login");
+              }}
+              variant="outline"
+              className="w-full h-12"
+            >
               {t("logout")}
             </Button>
           </div>

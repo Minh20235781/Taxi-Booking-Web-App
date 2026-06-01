@@ -13,7 +13,8 @@ import {
 import { Car, ArrowLeft, Upload, Globe, X } from "lucide-react";
 import { Checkbox } from "../../components/ui/checkbox";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { api, setAuthToken, getAuthToken } from "../../services/api";
+import { api, API_BASE_URL, setAuthToken, getAuthToken } from "../../services/api";
+import { getStoredRole, logout as clearSession } from "../../utils/auth";
 
 function ImageUploadField({
   label,
@@ -71,7 +72,7 @@ function ImageUploadField({
 export default function DriverRegistration() {
   const navigate = useNavigate();
   const { t, language, setLanguage } = useLanguage();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [guestBlocked, setGuestBlocked] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -168,12 +169,10 @@ export default function DriverRegistration() {
       if (!formData.phone) missing.push("phone");
       if (!formData.firstName && !formData.lastName) missing.push("name");
 
-      if (!isAuthenticated) {
-        if (!formData.password) missing.push("password");
-        if (!formData.confirmPassword) missing.push("confirm password");
-        if (formData.password !== formData.confirmPassword) {
-          return alert("Mật khẩu xác nhận không khớp.");
-        }
+      if (!formData.password) missing.push("password");
+      if (!formData.confirmPassword) missing.push("confirm password");
+      if (formData.password !== formData.confirmPassword) {
+        return alert("Mật khẩu xác nhận không khớp.");
       }
 
       if (missing.length) {
@@ -187,38 +186,42 @@ export default function DriverRegistration() {
 
       const fullName = `${formData.firstName} ${formData.lastName}`.trim();
 
-      let token = getAuthToken() || undefined;
+      let token: string | undefined;
 
-      if (!token) {
+      try {
+        const signupRes: any = await api.signup({
+          fullName,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+          role: "DRIVER",
+        });
+        token = signupRes?.token;
+        if (token) setAuthToken(token);
+        if (signupRes?.user) {
+          localStorage.setItem("auth_user", JSON.stringify(signupRes.user));
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "";
+        if (msg.includes("Email already exists")) {
+          return alert(t("driverEmailTakenUseDifferent"));
+        }
+        if (msg.includes("Invalid credentials") || msg.includes("401")) {
+          return alert(t("driverEmailTakenUseDifferent"));
+        }
         try {
-          const signupRes: any = await api.signup({
-            fullName,
+          const loginRes: any = await api.login({
             email: formData.email,
-            phone: formData.phone,
             password: formData.password,
             role: "DRIVER",
           });
-          token = signupRes?.token;
+          token = loginRes?.token;
           if (token) setAuthToken(token);
-          if (signupRes?.user) {
-            localStorage.setItem("auth_user", JSON.stringify(signupRes.user));
+          if (loginRes?.user) {
+            localStorage.setItem("auth_user", JSON.stringify(loginRes.user));
           }
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : "";
-          if (msg.includes("Email already exists")) {
-            const loginRes: any = await api.login({
-              email: formData.email,
-              password: formData.password,
-              role: "DRIVER",
-            });
-            token = loginRes?.token;
-            if (token) setAuthToken(token);
-            if (loginRes?.user) {
-              localStorage.setItem("auth_user", JSON.stringify(loginRes.user));
-            }
-          } else {
-            throw e;
-          }
+        } catch {
+          throw e;
         }
       }
 
@@ -257,7 +260,6 @@ export default function DriverRegistration() {
       }
 
       // Gửi FormData qua fetch để hỗ trợ file upload
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
       const authHeader = getAuthToken();
       const response = await fetch(`${API_BASE_URL}/driver/profile`, {
         method: "PUT",
@@ -273,9 +275,6 @@ export default function DriverRegistration() {
       }
 
       const result = await response.json();
-      if (result.token) {
-        setAuthToken(result.token);
-      }
       if (result.user) {
         localStorage.setItem("auth_user", JSON.stringify(result.user));
       }
@@ -289,28 +288,49 @@ export default function DriverRegistration() {
     }
   };
 
-  // Prefill from authenticated user; detect login state
   useEffect(() => {
-    const token = getAuthToken();
-    setIsAuthenticated(Boolean(token));
+    const role = getStoredRole();
+    if (!getAuthToken() || !role) return;
 
-    const stored = localStorage.getItem("auth_user") || localStorage.getItem("user");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        const nameParts = parsed.fullName ? String(parsed.fullName).trim().split(/\s+/) : [];
-        setFormData((prev) => ({
-          ...prev,
-          email: parsed.email || prev.email,
-          phone: parsed.phone || prev.phone,
-          firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : nameParts[0] || prev.firstName,
-          lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : prev.lastName,
-        }));
-      } catch {
-        // ignore parse errors
-      }
+    if (role === "USER") {
+      setGuestBlocked(true);
+      return;
     }
-  }, []);
+
+    navigate("/driver/home", { replace: true });
+  }, [navigate]);
+
+  const handleLogoutToRegister = () => {
+    clearSession();
+    setGuestBlocked(false);
+  };
+
+  if (guestBlocked) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col">
+        <div className="bg-black text-white px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Car className="h-6 w-6" />
+            <h1 className="text-2xl font-bold">Antrek</h1>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md text-center space-y-4">
+            <h2 className="text-2xl font-bold">{t("driverRegistration")}</h2>
+            <p className="text-gray-600">{t("driverRegRequiresLogout")}</p>
+            <div className="flex flex-col gap-3">
+              <Button onClick={handleLogoutToRegister} className="h-12 bg-black hover:bg-gray-800 text-white">
+                {t("logoutAndContinueDriverReg")}
+              </Button>
+              <Button variant="outline" onClick={() => navigate("/user/home")} className="h-12">
+                {t("backToUserHome")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -368,7 +388,7 @@ export default function DriverRegistration() {
             <div>
               <h3 className="font-bold text-lg mb-1">{t("accountInformation")}</h3>
               <p className="text-sm text-gray-600 mb-4">
-                {isAuthenticated ? t("driverAccountLoggedInNote") : t("driverAccountSectionNote")}
+                {t("driverAccountSectionNote")}
               </p>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -403,7 +423,6 @@ export default function DriverRegistration() {
                     className="bg-gray-100 border-none h-12"
                     value={formData.email}
                     onChange={handleChange}
-                    readOnly={isAuthenticated}
                   />
                 </div>
 
@@ -419,32 +438,28 @@ export default function DriverRegistration() {
                   />
                 </div>
 
-                {!isAuthenticated && (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="password">{t("password")}</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        placeholder={t("enterPassword")}
-                        className="bg-gray-100 border-none h-12"
-                        value={formData.password}
-                        onChange={handleChange}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        placeholder={t("reEnterPassword")}
-                        className="bg-gray-100 border-none h-12"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="password">{t("password")}</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder={t("enterPassword")}
+                    className="bg-gray-100 border-none h-12"
+                    value={formData.password}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder={t("reEnterPassword")}
+                    className="bg-gray-100 border-none h-12"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                  />
+                </div>
               </div>
             </div>
 

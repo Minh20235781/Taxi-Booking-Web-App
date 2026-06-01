@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api } from "../../services/api";
+import { logout } from "../../utils/auth";
 
 export default function DriverProfilePage() {
   const navigate = useNavigate();
@@ -317,7 +318,10 @@ export default function DriverProfilePage() {
           {/* Logout */}
           <div className="mt-6">
             <Button
-              onClick={() => navigate("/login")}
+              onClick={() => {
+                logout();
+                navigate("/login");
+              }}
               variant="outline"
               className="w-full h-12 text-red-600 border-red-600 hover:bg-red-50"
             >

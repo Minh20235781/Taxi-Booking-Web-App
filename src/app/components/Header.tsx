@@ -14,6 +14,7 @@ import {
   PopoverTrigger,
 } from "./ui/popover";
 import { useLanguage } from "../contexts/LanguageContext";
+import { logout } from "../utils/auth";
 
 interface HeaderProps {
   type?: "user" | "driver";
@@ -91,7 +92,10 @@ export function Header({ type = "user" }: HeaderProps) {
               <Button
                 variant="ghost"
                 className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                onClick={() => navigate("/login")}
+                onClick={() => {
+                  logout();
+                  navigate("/login");
+                }}
               >
                 <LogOut className="mr-2 h-4 w-4" />
                 {t("logout")}
