@@ -26,23 +26,48 @@ const PORT = Number(process.env.PORT || 4000);
 const JWT_SECRET = process.env.JWT_SECRET || "dev_jwt_secret_change_me";
 const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY || "";
 
+function normalizeOrigin(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/$/, "");
+  return `https://${trimmed.replace(/\/$/, "")}`;
+}
+
 function resolveCorsOrigins() {
   const raw = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "";
   const origins = raw
     .split(",")
-    .map((item) => item.trim())
+    .map((item) => normalizeOrigin(item))
     .filter(Boolean);
   return origins.length ? origins : null;
 }
 
 const corsOrigins = resolveCorsOrigins();
-const corsOptions = corsOrigins ? { origin: corsOrigins, credentials: true } : {};
+
+function isAllowedCorsOrigin(origin) {
+  if (!origin) return true;
+  if (!corsOrigins) return true;
+  if (corsOrigins.includes(origin)) return true;
+  // Allow any Vercel deployment URL (production + preview)
+  if (/^https:\/\/[\w-]+\.vercel\.app$/i.test(origin)) return true;
+  return false;
+}
+const corsOptions = corsOrigins
+  ? {
+      origin(origin, callback) {
+        callback(null, isAllowedCorsOrigin(origin));
+      },
+      credentials: true
+    }
+  : {};
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: corsOrigins || "*",
+    origin(origin, callback) {
+      callback(null, isAllowedCorsOrigin(origin));
+    },
     methods: ["GET", "POST"]
   }
 });
