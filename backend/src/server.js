@@ -1000,8 +1000,7 @@ app.post("/driver/complete-ride/:bookingId", authRequired, async (req, res) => {
       data: {
         customerSnapshotJson: customerSnapshot ? JSON.stringify(customerSnapshot) : undefined,
         paymentMethod: method,
-        paymentMethodLabel: label,
-        status: "COMPLETED"
+        paymentMethodLabel: label
       }
     });
 
@@ -1024,17 +1023,19 @@ app.post("/driver/complete-ride/:bookingId", authRequired, async (req, res) => {
         provider: method,
         amount: finalFare,
         currency: "VND",
-        status: "PAID",
-        externalId: method === "MOMO" ? `MOCK_MOMO_${Date.now()}` : null,
-        paidAt: now
+        status: "PENDING",
+        externalId: null,
+        paidAt: null
       },
       update: {
         method,
         provider: method,
         amount: finalFare,
         currency: "VND",
-        status: "PAID",
-        paidAt: now
+        status: "PENDING",
+        externalId: null,
+        failureReason: null,
+        paidAt: null
       }
     });
 
@@ -1112,6 +1113,9 @@ app.post("/bookings/:bookingId/confirm-payment", authRequired, async (req, res) 
   const requestedAmount = Number(req.body?.amount ?? booking.estimatedFare ?? 0);
   const amount = Number.isFinite(requestedAmount) && requestedAmount >= 0 ? requestedAmount : 0;
   const ride = await ensureRideForBooking(booking);
+  if (ride.status !== "COMPLETED") {
+    return res.status(400).json({ message: "Driver must complete the ride before payment." });
+  }
 
   const payment = await prisma.payment.upsert({
     where: { rideId: ride.id },
@@ -1581,7 +1585,7 @@ app.get("/driver/accepted-rides", authRequired, async (req, res) => {
     const rides = await prisma.ride.findMany({
       where: {
         driverProfileId: driverProfile.id,
-        status: { in: ["ACCEPTED", "DRIVER_EN_ROUTE", "ARRIVED", "IN_PROGRESS", "CANCELLED"] }
+        status: { in: ["ACCEPTED", "DRIVER_EN_ROUTE", "ARRIVED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] }
       },
       include: {
         booking: { include: { user: true, vehicleClass: true } }

@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar"
 import { Phone, MessageCircle, Star, MapPin, Loader2 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { clearBookingFlowDraft, clearActiveBookingId, getActiveBookingId, getBookingFlowDraft, setActiveBookingId, updateBookingFlowDraft } from "../../services/bookingFlow";
-import type { LocationSuggestion, PaymentMethodCode } from "../../services/api";
+import type { LocationSuggestion } from "../../services/api";
 import { calculateFare, formatVnd } from "../../services/pricing";
 import { api } from "../../services/api";
 
@@ -18,12 +18,6 @@ const LANGUAGE_LABELS: Record<string, string> = {
   english: "English",
   vietnamese: "Vietnamese",
 };
-
-function toPaymentMethodCode(methodId?: string): PaymentMethodCode {
-  if (methodId === "momo") return "MOMO";
-  if (methodId === "cash") return "CASH";
-  return "CARD";
-}
 
 function parseLanguageList(value: unknown): string[] {
   if (!value) return [];
@@ -44,8 +38,6 @@ export default function RidePage() {
   const { t } = useLanguage();
   const draft = getBookingFlowDraft();
   const [bookingWithRide, setBookingWithRide] = useState<any | null>(null);
-  const [isCompleted, setIsCompleted] = useState(false);
-  const [driverEndedTrip, setDriverEndedTrip] = useState(false);
   const [isPolling, setIsPolling] = useState(true);
   const [driverJustAssigned, setDriverJustAssigned] = useState(false);
   const [pickupSelection] = useState<LocationSuggestion | null>(draft.pickupSelection || null);
@@ -54,6 +46,7 @@ export default function RidePage() {
   );
   const pollingRef = useRef<number | null>(null);
   const hadDriverRef = useRef(false);
+  const redirectingToBillRef = useRef(false);
 
   const bookingId =
     Number(searchParams.get("bookingId")) ||
@@ -112,8 +105,23 @@ export default function RidePage() {
 
         setBookingWithRide(data);
 
-        if (data?.ride?.status === "COMPLETED") {
-          setDriverEndedTrip(true);
+        if (data?.ride?.status === "COMPLETED" && !redirectingToBillRef.current) {
+          redirectingToBillRef.current = true;
+          try {
+            await api.confirmBookingPayment(bookingId, {
+              label: draft.paymentMethodLabel,
+            });
+          } catch (error) {
+            console.error("Auto payment confirmation failed", error);
+          } finally {
+            clearActiveBookingId();
+            setIsPolling(false);
+            try {
+              sessionStorage.setItem("last_completed_booking_id", String(bookingId));
+            } catch {}
+            navigate("/user/bill");
+          }
+          return;
         }
 
         if (data?.ride) {
@@ -136,23 +144,6 @@ export default function RidePage() {
       }
     };
   }, [bookingId]);
-
-  const handleCompleteRide = async () => {
-    if (bookingId) {
-      try {
-        await api.confirmBookingPayment(bookingId, {
-          method: toPaymentMethodCode(draft.paymentMethodId),
-          label: draft.paymentMethodLabel,
-        });
-        sessionStorage.setItem("last_completed_booking_id", String(bookingId));
-        clearActiveBookingId();
-      } catch (error) {
-        console.error("Failed to confirm payment on server", error);
-      }
-    }
-    setIsCompleted(true);
-    setTimeout(() => navigate("/user/bill"), 500);
-  };
 
   const handleCancelRide = async () => {
     if (bookingId) {
@@ -356,28 +347,13 @@ export default function RidePage() {
                   </p>
                 </Card>
 
-                {driverEndedTrip && (
-                  <Card className="p-4 mb-4 bg-amber-50 border-amber-200">
-                    <p className="text-sm font-semibold text-amber-800">{t("driverEndedTrip")}</p>
-                  </Card>
-                )}
-
                 <Button
-                  onClick={handleCompleteRide}
-                  disabled={isCompleted}
-                  className="w-full h-12 bg-green-600 hover:bg-green-700 text-white mb-3"
+                  variant="outline"
+                  onClick={handleCancelRide}
+                  className="w-full h-12 text-red-600 border-red-600 hover:bg-red-50"
                 >
-                  {driverEndedTrip ? t("confirmPayment") : t("completeRide")}
+                  {t("cancelRide")}
                 </Button>
-                {!driverEndedTrip && (
-                  <Button
-                    variant="outline"
-                    onClick={handleCancelRide}
-                    className="w-full h-12 text-red-600 border-red-600 hover:bg-red-50"
-                  >
-                    {t("cancelRide")}
-                  </Button>
-                )}
               </>
             )}
           </div>
