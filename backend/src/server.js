@@ -632,9 +632,19 @@ app.put("/driver/profile", authRequired, upload.fields([
   { name: 'languageCertification', maxCount: 1 }
 ]), async (req, res) => {
   const userId = Number(req.auth.sub);
-  if (req.auth.role !== "DRIVER") {
+  const authUser = await prisma.user.findUnique({ where: { id: userId } });
+  if (!authUser) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  let roleUpgraded = false;
+  if (authUser.role === "USER") {
+    await prisma.user.update({ where: { id: userId }, data: { role: "DRIVER" } });
+    roleUpgraded = true;
+  } else if (authUser.role !== "DRIVER") {
     return res.status(403).json({ message: "Driver account required" });
   }
+
   const data = req.body;
 
   try {
@@ -728,7 +738,14 @@ app.put("/driver/profile", authRequired, upload.fields([
       });
     }
 
-    res.json({ message: "Profile updated successfully.", driverProfile });
+    const responseBody = { message: "Profile updated successfully.", driverProfile };
+    if (roleUpgraded) {
+      const updatedUser = await prisma.user.findUnique({ where: { id: userId } });
+      const safe = safeUser(updatedUser);
+      responseBody.token = signToken(safe);
+      responseBody.user = safe;
+    }
+    res.json(responseBody);
   } catch (error) {
     console.error("Error updating driver profile:", error);
     res.status(500).json({ message: error.message || "Internal server error" });

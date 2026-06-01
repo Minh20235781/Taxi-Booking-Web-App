@@ -272,6 +272,14 @@ export default function DriverRegistration() {
         throw new Error(errorData.message || "Registration failed");
       }
 
+      const result = await response.json();
+      if (result.token) {
+        setAuthToken(result.token);
+      }
+      if (result.user) {
+        localStorage.setItem("auth_user", JSON.stringify(result.user));
+      }
+
       const me = await api.me();
       localStorage.setItem("auth_user", JSON.stringify(me.user || me));
       navigate("/driver/home");
@@ -290,16 +298,13 @@ export default function DriverRegistration() {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
+        const nameParts = parsed.fullName ? String(parsed.fullName).trim().split(/\s+/) : [];
         setFormData((prev) => ({
           ...prev,
           email: parsed.email || prev.email,
           phone: parsed.phone || prev.phone,
-          firstName: parsed.fullName
-            ? String(parsed.fullName).split(" ").slice(0, -1).join(" ")
-            : prev.firstName,
-          lastName: parsed.fullName
-            ? String(parsed.fullName).split(" ").slice(-1).join(" ")
-            : prev.lastName,
+          firstName: nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : nameParts[0] || prev.firstName,
+          lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : prev.lastName,
         }));
       } catch {
         // ignore parse errors
@@ -375,7 +380,6 @@ export default function DriverRegistration() {
                       className="bg-gray-100 border-none h-12"
                       value={formData.firstName}
                       onChange={handleChange}
-                      disabled={isAuthenticated}
                     />
                   </div>
                   <div className="space-y-2">
@@ -386,7 +390,6 @@ export default function DriverRegistration() {
                       className="bg-gray-100 border-none h-12"
                       value={formData.lastName}
                       onChange={handleChange}
-                      disabled={isAuthenticated}
                     />
                   </div>
                 </div>
@@ -400,7 +403,7 @@ export default function DriverRegistration() {
                     className="bg-gray-100 border-none h-12"
                     value={formData.email}
                     onChange={handleChange}
-                    disabled={isAuthenticated}
+                    readOnly={isAuthenticated}
                   />
                 </div>
 
@@ -413,7 +416,6 @@ export default function DriverRegistration() {
                     className="bg-gray-100 border-none h-12"
                     value={formData.phone}
                     onChange={handleChange}
-                    disabled={isAuthenticated}
                   />
                 </div>
 
@@ -458,7 +460,7 @@ export default function DriverRegistration() {
                   </Label>
                   <Input
                     id="bankName"
-                    placeholder="Vietcombank"
+                    placeholder={t("enterBankName")}
                     className="bg-gray-100 border-none h-12"
                     value={formData.bankName}
                     onChange={handleChange}
@@ -471,7 +473,7 @@ export default function DriverRegistration() {
                   </Label>
                   <Input
                     id="accountNumber"
-                    placeholder="1234567890"
+                    placeholder={t("enterAccountNumber")}
                     className="bg-gray-100 border-none h-12"
                     value={formData.accountNumber}
                     onChange={handleChange}
