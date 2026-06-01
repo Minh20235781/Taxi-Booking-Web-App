@@ -163,6 +163,7 @@ export default function DriverRegistration() {
   };
 
   const handleSubmit = async () => {
+    let authReady = false;
     try {
       const missing: string[] = [];
       if (!formData.email) missing.push("email");
@@ -197,7 +198,10 @@ export default function DriverRegistration() {
           role: "DRIVER",
         });
         token = signupRes?.token;
-        if (token) setAuthToken(token);
+        if (token) {
+          setAuthToken(token);
+          authReady = true;
+        }
         if (signupRes?.user) {
           localStorage.setItem("auth_user", JSON.stringify(signupRes.user));
         }
@@ -216,7 +220,10 @@ export default function DriverRegistration() {
             role: "DRIVER",
           });
           token = loginRes?.token;
-          if (token) setAuthToken(token);
+          if (token) {
+            setAuthToken(token);
+            authReady = true;
+          }
           if (loginRes?.user) {
             localStorage.setItem("auth_user", JSON.stringify(loginRes.user));
           }
@@ -271,7 +278,7 @@ export default function DriverRegistration() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Registration failed");
+        throw new Error(errorData.message || "Driver profile update failed");
       }
 
       const result = await response.json();
@@ -284,7 +291,15 @@ export default function DriverRegistration() {
       navigate("/driver/home");
     } catch (error) {
       console.error(error);
-      alert(`Registration failed. ${error instanceof Error ? error.message : "Please try again."}`);
+      const message = error instanceof Error ? error.message : "Please try again.";
+      if (authReady || getAuthToken()) {
+        alert(
+          `Driver account đã được tạo, nhưng cập nhật hồ sơ tài xế chưa hoàn tất. ${message}`
+        );
+        navigate("/driver/profile");
+        return;
+      }
+      alert(`Registration failed. ${message}`);
     }
   };
 
