@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import { api } from "../../services/api";
+import { getAuthRole } from "../../services/authSession";
 import { Header } from "../../components/Header";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -30,18 +31,27 @@ export default function UserProfilePage() {
   const { t } = useLanguage();
   const [user, setUser] = useState<any>(null);
   const [completedCount, setCompletedCount] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
+    if (getAuthRole() !== "USER") {
+      navigate("/login", { replace: true });
+      return;
+    }
+
     api
       .me()
       .then((res: any) => setUser(res.user || res))
-      .catch((err) => console.error("Failed to load user:", err));
+      .catch((err) => {
+        console.error("Failed to load user:", err);
+        setLoadError(err instanceof Error ? err.message : t("loadFailed"));
+      });
 
     api
       .getCompletedRides()
       .then((rides) => setCompletedCount(Array.isArray(rides) ? rides.length : 0))
       .catch(() => setCompletedCount(0));
-  }, []);
+  }, [navigate, t]);
 
   const locationLine = [user?.address, user?.city, user?.country].filter(Boolean).join(", ");
   const initials =
@@ -97,6 +107,12 @@ export default function UserProfilePage() {
 
       <div className="flex-1 p-6 overflow-auto">
         <div className="max-w-4xl mx-auto">
+          {loadError && (
+            <Card className="p-4 mb-4 text-red-700 bg-red-50 border-red-200">
+              {loadError}
+            </Card>
+          )}
+
           <Card className="p-8 mb-6">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-6">

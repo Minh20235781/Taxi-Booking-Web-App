@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type RideMessage } from "../services/api";
 import {
   getAuthUserId,
-  getAuthUserRole,
+  getAuthRole,
   joinRideRoom,
   sendRideMessage,
   subscribeRideMessages
@@ -39,7 +39,7 @@ export function useRideChat(bookingId: number, options?: { enabled?: boolean }) 
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const selfRole = getAuthUserRole();
+  const selfRole = getAuthRole();
   const selfUserId = getAuthUserId();
   const seenIds = useRef(new Set<number>());
 

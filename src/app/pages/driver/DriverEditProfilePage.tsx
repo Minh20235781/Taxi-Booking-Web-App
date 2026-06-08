@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Camera, ArrowLeft, Upload, X, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../services/api";
+import { normalizeDriverProfileResponse } from "../../services/driverProfile";
 import { useLanguage } from "../../contexts/LanguageContext";
 
 export default function DriverEditProfilePage() {
@@ -64,46 +65,45 @@ export default function DriverEditProfilePage() {
     const fetchProfile = async () => {
       try {
         const response = await api.getDriverProfile();
-        const data = response.data || response;
-        if (data) {
-          const user = data.user || {};
-          const driverProfile = data;
+        const normalized = normalizeDriverProfileResponse(response);
+        if (!normalized) return;
 
-          // Tách fullName thành firstName & lastName
-          const names = user.fullName ? user.fullName.trim().split(" ") : ["", ""];
-          let fName = "";
-          let lName = "";
-          if (names.length > 1) {
-            fName = names[0];
-            lName = names.slice(1).join(" ");
-          } else {
-            fName = names[0] || "";
-          }
+        const user = normalized.user || {};
+        const driverProfile = normalized.driverProfile || {};
 
-          setFormData({
-            firstName: fName,
-            lastName: lName,
-            email: user.email || "",
-            phone: user.phone || "",
-            address: user.address || "",
-            city: user.city || "",
-            country: user.country || "",
-            vehicleModel: driverProfile.vehicleModel || "",
-            vehiclePlate: driverProfile.vehiclePlate || "",
-            vehicleYear: driverProfile.vehicleYear || "",
-            vehicleColor: driverProfile.vehicleColor || "",
-            vehiclePhotoUrl: driverProfile.vehiclePhotoUrl || "",
-            avatarUrl: user.avatarUrl || "",
-          });
-          setVehiclePhotoUrl(driverProfile.vehiclePhotoUrl || "");
-
-          const langString = driverProfile.languages || "";
-          setLanguages({
-            japanese: langString.toLowerCase().includes("japanese"),
-            english: langString.toLowerCase().includes("english"),
-            vietnamese: langString.toLowerCase().includes("vietnamese"),
-          });
+        const names = user.fullName ? user.fullName.trim().split(" ") : ["", ""];
+        let fName = "";
+        let lName = "";
+        if (names.length > 1) {
+          fName = names[0];
+          lName = names.slice(1).join(" ");
+        } else {
+          fName = names[0] || "";
         }
+
+        setFormData({
+          firstName: fName,
+          lastName: lName,
+          email: user.email || "",
+          phone: user.phone || "",
+          address: user.address || "",
+          city: user.city || "",
+          country: user.country || "",
+          vehicleModel: driverProfile.vehicleModel || "",
+          vehiclePlate: driverProfile.vehiclePlate || "",
+          vehicleYear: driverProfile.vehicleYear || "",
+          vehicleColor: driverProfile.vehicleColor || "",
+          vehiclePhotoUrl: driverProfile.vehiclePhotoUrl || "",
+          avatarUrl: user.avatarUrl || "",
+        });
+        setVehiclePhotoUrl(driverProfile.vehiclePhotoUrl || "");
+
+        const langString = driverProfile.languages || "";
+        setLanguages({
+          japanese: langString.toLowerCase().includes("japanese"),
+          english: langString.toLowerCase().includes("english"),
+          vietnamese: langString.toLowerCase().includes("vietnamese"),
+        });
       } catch (error) {
         console.error("Failed to fetch driver profile:", error);
         toast.error(t("errorFetchProfile") || "プロフィールの取得に失敗しました");

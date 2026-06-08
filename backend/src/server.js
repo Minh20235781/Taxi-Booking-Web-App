@@ -443,6 +443,9 @@ app.get("/auth/me", authRequired, async (req, res) => {
 // Update user profile (for regular users)
 app.put("/user/profile", authRequired, async (req, res) => {
   const userId = Number(req.auth.sub);
+  if (req.auth.role !== "USER") {
+    return res.status(403).json({ message: "User account required." });
+  }
   const data = req.body || {};
   try {
     const allowed = {
@@ -578,6 +581,10 @@ app.get("/rides/:rideId/messages", authRequired, async (req, res) => {
 });
 
 app.post("/bookings/create-flow", authRequired, async (req, res) => {
+  if (req.auth.role !== "USER") {
+    return res.status(403).json({ message: "Only customer accounts can create bookings." });
+  }
+
   let payload;
   try {
     payload = normalizeBookingPayload(req.body);
@@ -755,6 +762,9 @@ app.put("/driver/profile", authRequired, uploadDriverProfileFiles, async (req, r
 
 app.get("/driver/profile", authRequired, async (req, res) => {
   const userId = Number(req.auth.sub);
+  if (req.auth.role !== "DRIVER") {
+    return res.status(403).json({ message: "Driver account required." });
+  }
   try {
     const driverProfile = await prisma.driverProfile.findUnique({
       where: { userId },

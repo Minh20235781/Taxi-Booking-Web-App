@@ -120,16 +120,25 @@ export function clearRecentCompletedBooking() {
 const ACTIVE_BOOKING_KEY = "user_active_booking_id";
 
 export function setActiveBookingId(bookingId: number) {
-  localStorage.setItem(ACTIVE_BOOKING_KEY, String(bookingId));
+  sessionStorage.setItem(ACTIVE_BOOKING_KEY, String(bookingId));
+  localStorage.removeItem(ACTIVE_BOOKING_KEY);
 }
 
 export function getActiveBookingId(): number | null {
-  const raw = localStorage.getItem(ACTIVE_BOOKING_KEY);
+  let raw = sessionStorage.getItem(ACTIVE_BOOKING_KEY);
+  if (!raw) {
+    raw = localStorage.getItem(ACTIVE_BOOKING_KEY);
+    if (raw) {
+      sessionStorage.setItem(ACTIVE_BOOKING_KEY, raw);
+      localStorage.removeItem(ACTIVE_BOOKING_KEY);
+    }
+  }
   const id = Number(raw);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 export function clearActiveBookingId() {
+  sessionStorage.removeItem(ACTIVE_BOOKING_KEY);
   localStorage.removeItem(ACTIVE_BOOKING_KEY);
 }
 

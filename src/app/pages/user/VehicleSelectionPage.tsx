@@ -16,6 +16,7 @@ import {
   updateBookingFlowDraft
 } from "../../services/bookingFlow";
 import { calculateFare, fetchFareEstimate, formatVnd } from "../../services/pricing";
+import { isLoggedIn } from "../../services/authSession";
 
 export default function VehicleSelectionPage() {
   const navigate = useNavigate();
@@ -80,8 +81,7 @@ export default function VehicleSelectionPage() {
       setErrorMessage("Vui lòng chọn hạng xe.");
       return;
     }
-    const authUserText = localStorage.getItem("auth_user");
-    if (!authUserText) {
+    if (!isLoggedIn()) {
       navigate("/login");
       return;
     }

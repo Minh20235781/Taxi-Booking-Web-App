@@ -1,28 +1,27 @@
-import { clearAuthToken, getAuthToken } from "../services/api";
+import { clearAuthSession, getAuthRole, getAuthToken, isLoggedIn } from "../services/authSession";
+import { clearActiveBookingId, clearBookingFlowDraft } from "../services/bookingFlow";
 
 export type AuthRole = "USER" | "DRIVER";
 
-export function getStoredUser(): { role?: AuthRole; email?: string; fullName?: string } | null {
-  const raw = localStorage.getItem("auth_user");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
+export {
+  getAuthRole,
+  getAuthToken,
+  getAuthUserId,
+  getStoredUser,
+  isLoggedIn,
+  isPathAllowedForRole,
+  roleHomePath,
+  setAuthSession,
+  updateStoredUser
+} from "../services/authSession";
 
+/** @deprecated use getAuthRole — kept for existing imports */
 export function getStoredRole(): AuthRole | null {
-  const role = getStoredUser()?.role;
-  return role === "USER" || role === "DRIVER" ? role : null;
-}
-
-export function isLoggedIn(): boolean {
-  return Boolean(getAuthToken() && getStoredRole());
+  return getAuthRole();
 }
 
 export function logout() {
-  clearAuthToken();
-  localStorage.removeItem("auth_user");
-  localStorage.removeItem("user");
+  clearAuthSession();
+  clearActiveBookingId();
+  clearBookingFlowDraft();
 }

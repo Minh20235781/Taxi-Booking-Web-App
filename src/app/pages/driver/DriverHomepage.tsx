@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api } from "../../services/api";
+import { normalizeDriverProfileResponse } from "../../services/driverProfile";
 
 export default function DriverHomepage() {
   const navigate = useNavigate();
@@ -51,11 +52,9 @@ export default function DriverHomepage() {
   useEffect(() => {
     api.getDriverProfile()
       .then((response) => {
-        const data = response.data || response;
-        setDriverProfile(data?.driverProfile || data);
-
-        // Cập nhật trạng thái online
-        const onlineStatus = data?.driverProfile?.isOnline ?? data?.isOnline;
+        const normalized = normalizeDriverProfileResponse(response);
+        setDriverProfile(normalized?.driverProfile || null);
+        const onlineStatus = normalized?.driverProfile?.isOnline;
         setIsOnline(!!onlineStatus);
       })
       .catch(console.error);

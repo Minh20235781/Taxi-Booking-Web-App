@@ -1,5 +1,11 @@
+import {
+  clearAuthSession,
+  getAuthToken as getSessionToken,
+  setAuthToken as setSessionToken,
+  clearAuthToken as clearSessionToken
+} from "./authSession";
+
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
-const AUTH_TOKEN_KEY = "auth_token";
 
 export interface LocationSuggestion {
   placeId: string;
@@ -21,15 +27,15 @@ export interface RideMessage {
 export type PaymentMethodCode = "MOMO" | "CASH" | "CARD";
 
 export function getAuthToken() {
-  return localStorage.getItem(AUTH_TOKEN_KEY);
+  return getSessionToken();
 }
 
 export function setAuthToken(token: string) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  setSessionToken(token);
 }
 
 export function clearAuthToken() {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
+  clearSessionToken();
 }
 
 async function request(path: string, options: RequestInit = {}) {
@@ -46,8 +52,7 @@ async function request(path: string, options: RequestInit = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401) {
-      clearAuthToken();
-      localStorage.removeItem("auth_user");
+      clearAuthSession();
     }
     throw new Error(data.message || "Request failed");
   }

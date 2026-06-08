@@ -13,8 +13,9 @@ import {
 import { Car, ArrowLeft, Upload, Globe, X } from "lucide-react";
 import { Checkbox } from "../../components/ui/checkbox";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { api, API_BASE_URL, setAuthToken, getAuthToken } from "../../services/api";
-import { getStoredRole, logout as clearSession } from "../../utils/auth";
+import { api, API_BASE_URL, getAuthToken } from "../../services/api";
+import { getAuthRole, setAuthSession, updateStoredUser } from "../../services/authSession";
+import { logout as clearSession } from "../../utils/auth";
 
 function ImageUploadField({
   label,
@@ -198,12 +199,9 @@ export default function DriverRegistration() {
           role: "DRIVER",
         });
         token = signupRes?.token;
-        if (token) {
-          setAuthToken(token);
+        if (token && signupRes?.user) {
+          setAuthSession(token, signupRes.user);
           authReady = true;
-        }
-        if (signupRes?.user) {
-          localStorage.setItem("auth_user", JSON.stringify(signupRes.user));
         }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "";
@@ -220,12 +218,9 @@ export default function DriverRegistration() {
             role: "DRIVER",
           });
           token = loginRes?.token;
-          if (token) {
-            setAuthToken(token);
+          if (token && loginRes?.user) {
+            setAuthSession(token, loginRes.user);
             authReady = true;
-          }
-          if (loginRes?.user) {
-            localStorage.setItem("auth_user", JSON.stringify(loginRes.user));
           }
         } catch {
           throw e;
@@ -283,11 +278,12 @@ export default function DriverRegistration() {
 
       const result = await response.json();
       if (result.user) {
-        localStorage.setItem("auth_user", JSON.stringify(result.user));
+        updateStoredUser(result.user);
       }
 
       const me = await api.me();
-      localStorage.setItem("auth_user", JSON.stringify(me.user || me));
+      const meUser = me.user || me;
+      updateStoredUser(meUser);
       navigate("/driver/home");
     } catch (error) {
       console.error(error);
@@ -304,7 +300,7 @@ export default function DriverRegistration() {
   };
 
   useEffect(() => {
-    const role = getStoredRole();
+    const role = getAuthRole();
     if (!getAuthToken() || !role) return;
 
     if (role === "USER") {

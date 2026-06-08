@@ -11,6 +11,7 @@ import { Camera, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api } from "../../services/api";
+import { updateStoredUser } from "../../services/authSession";
 
 export default function UserEditProfilePage() {
   const navigate = useNavigate();
@@ -62,7 +63,9 @@ export default function UserEditProfilePage() {
       city: formData.city,
       country: formData.country
     })
-      .then(() => {
+      .then((res: any) => {
+        const updated = res.user || res;
+        if (updated?.id) updateStoredUser(updated);
         toast.success(t("profileUpdated"));
         navigate("/user/profile");
       })

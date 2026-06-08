@@ -13,7 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { api, setAuthToken } from "../../services/api";
+import { api } from "../../services/api";
+import { setAuthSession } from "../../services/authSession";
+import { clearActiveBookingId, clearBookingFlowDraft } from "../../services/bookingFlow";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -38,10 +40,11 @@ export default function Login() {
         password: password.trim(),
         role: type === "user" ? "USER" : "DRIVER"
       });
-      if (result.token) {
-        setAuthToken(result.token);
+      if (result.token && result.user) {
+        clearActiveBookingId();
+        clearBookingFlowDraft();
+        setAuthSession(result.token, result.user);
       }
-      localStorage.setItem("auth_user", JSON.stringify(result.user));
       navigate(`/${type}/home`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Đăng nhập thất bại.");

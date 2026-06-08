@@ -20,15 +20,17 @@ import {
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { api } from "../../services/api";
+import { getAuthRole } from "../../services/authSession";
+import { normalizeDriverProfileResponse } from "../../services/driverProfile";
 import { logout } from "../../utils/auth";
 
 export default function DriverProfilePage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  
-  // State lưu thông tin profile từ database
-  const [profileData, setProfileData] = useState<any>(null);
+
+  const [profileView, setProfileView] = useState<ReturnType<typeof normalizeDriverProfileResponse>>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [ratings, setRatings] = useState<
     { id: number; score: number; comment: string | null; compliments?: string[]; createdAt: string; riderName: string | null; riderAvatar: string | null }[]
   >([]);
@@ -46,14 +48,23 @@ export default function DriverProfilePage() {
   };
 
   useEffect(() => {
+    if (getAuthRole() !== "DRIVER") {
+      navigate("/login", { replace: true });
+      return;
+    }
+
     const fetchProfile = async () => {
       try {
         const response = await api.getDriverProfile();
-        // Kiểm tra cấu trúc trả về (giống DriverEditProfilePage)
-        const data = response.data || response;
-        setProfileData(data);
+        const normalized = normalizeDriverProfileResponse(response);
+        if (!normalized?.user) {
+          setLoadError(t("errorFetchProfile") || "Could not load driver profile.");
+          return;
+        }
+        setProfileView(normalized);
       } catch (error) {
         console.error("Failed to fetch driver profile:", error);
+        setLoadError(error instanceof Error ? error.message : t("errorFetchProfile"));
       } finally {
         setLoading(false);
       }
@@ -76,11 +87,10 @@ export default function DriverProfilePage() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", loadRatings);
     };
-  }, []);
+  }, [navigate, t]);
 
-  // Trích xuất dữ liệu an toàn bằng Optional Chaining (?.), nếu không có sẽ để chuỗi rỗng ""
-  const user = profileData?.user;
-  const driverProfile = profileData?.driverProfile;
+  const user = profileView?.user;
+  const driverProfile = profileView?.driverProfile;
 
   const fullName = user?.fullName || "";
   const email = user?.email || "";
@@ -149,12 +159,15 @@ export default function DriverProfilePage() {
 
       <div className="flex-1 p-6 overflow-auto">
         <div className="max-w-4xl mx-auto">
+          {loadError && (
+            <Card className="p-4 mb-4 text-red-700 bg-red-50 border-red-200">{loadError}</Card>
+          )}
           {/* Profile Header */}
           <Card className="p-8 mb-6">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-6">
                 <Avatar className="h-24 w-24">
-                  <AvatarImage src={user?.avatarUrl || "https://i.pravatar.cc/150?img=12"} />
+                  {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} /> : null}
                   <AvatarFallback>{getInitials(fullName)}</AvatarFallback>
                 </Avatar>
                 <div>
