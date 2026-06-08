@@ -24,15 +24,51 @@ export default function DriverRideInfoPage() {
     let mounted = true;
     (async () => {
       try {
+        if (bookingIdParam) {
+          const res = await api.getBookingWithRide(Number(bookingIdParam));
+          const booking = (res as { data?: unknown }).data || res;
+          if (!mounted || !booking?.id) return;
+          let langs: string[] = [];
+          let prefs: string[] = [];
+          let specialRequest: string | null = null;
+          if (booking.preferencesJson) {
+            try {
+              const parsed = JSON.parse(booking.preferencesJson);
+              if (Array.isArray(parsed.languages)) langs = parsed.languages;
+              if (Array.isArray(parsed.ridePreferences)) prefs = parsed.ridePreferences;
+              if (typeof parsed.specialRequest === "string") specialRequest = parsed.specialRequest;
+            } catch {
+              /* ignore */
+            }
+          }
+          setCurrentRide({
+            id: String(booking.id),
+            customerName: booking.user?.fullName || "",
+            customerAvatar: booking.user?.avatarUrl || null,
+            customerRating: 0,
+            pickup: booking.pickupAddress,
+            destination: booking.destination,
+            distance: booking.routeDistanceMeters
+              ? `${Math.round(booking.routeDistanceMeters / 1000)} km`
+              : "",
+            duration: booking.routeDurationSeconds
+              ? String(Math.round(booking.routeDurationSeconds / 60))
+              : "",
+            earnings: booking.estimatedFare ? String(Math.round(booking.estimatedFare)) : "",
+            languages: langs,
+            preferences: prefs,
+            specialRequest
+          });
+          return;
+        }
+
         const rides: any[] = await api.getDriverAcceptedRides();
         if (!mounted) return;
         if (!Array.isArray(rides) || rides.length === 0) return;
-        if (bookingIdParam) {
-          const match = rides.find((r) => String(r.id) === bookingIdParam);
-          setCurrentRide(match || rides[0]);
-        } else {
-          setCurrentRide(rides[0]);
-        }
+        const active = rides.filter((r) =>
+          ["ACCEPTED", "DRIVER_EN_ROUTE", "ARRIVED", "IN_PROGRESS"].includes(r.rideStatus)
+        );
+        setCurrentRide(active[0] || rides[0]);
       } catch (err) {
         console.error("Failed to fetch accepted rides", err);
       }
@@ -246,10 +282,21 @@ export default function DriverRideInfoPage() {
               {rideCompleted ? t("waitingForCustomerPayment") : t("completeRide")}
             </Button>
 
-            {/* Cancel Button */}
             <Button
               variant="outline"
               className="w-full h-12 mt-3 text-red-600 border-red-600 hover:bg-red-50"
+              disabled={rideCompleted || completing}
+              onClick={async () => {
+                const bookingId = currentRide?.id ? Number(currentRide.id) : 0;
+                if (!bookingId || !window.confirm(t("cancelRideConfirm"))) return;
+                try {
+                  await api.cancelAcceptance(bookingId);
+                  navigate("/driver/home");
+                } catch (error) {
+                  console.error("Failed to cancel acceptance:", error);
+                  alert(error instanceof Error ? error.message : t("cancelFailed"));
+                }
+              }}
             >
               {t("cancelRide")}
             </Button>

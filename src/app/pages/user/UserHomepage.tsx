@@ -64,9 +64,14 @@ export default function UserHomepage() {
     if (!activeBooking) return;
     try {
       await restoreBookingFlowFromId(activeBooking.id, api.getBookingWithRide);
+      if (activeBooking.rideStatus === "COMPLETED") {
+        navigate(`/user/bill?bookingId=${activeBooking.id}`);
+        return;
+      }
       navigate(`/user/ride?bookingId=${activeBooking.id}`);
     } catch (error) {
       console.error("Failed to resume ride:", error);
+      alert(error instanceof Error ? error.message : t("loadFailed"));
     }
   };
 

@@ -112,7 +112,7 @@ export default function DriverHomepage() {
   const handleAcceptRide = async (bookingId: number) => {
     try {
       await api.acceptRide(bookingId);
-      navigate("/driver/ride-accept");
+      navigate(`/driver/ride-accept?bookingId=${bookingId}`);
     } catch (error) {
       console.error(error);
       alert("Failed to accept ride. It might have been taken or canceled.");

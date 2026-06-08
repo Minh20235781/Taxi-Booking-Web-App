@@ -39,6 +39,7 @@ export default function RidePage() {
   const draft = getBookingFlowDraft();
   const [bookingWithRide, setBookingWithRide] = useState<any | null>(null);
   const [isPolling, setIsPolling] = useState(true);
+  const [pollError, setPollError] = useState("");
   const [driverJustAssigned, setDriverJustAssigned] = useState(false);
   const [pickupSelection] = useState<LocationSuggestion | null>(draft.pickupSelection || null);
   const [destinationSelection] = useState<LocationSuggestion | null>(
@@ -104,6 +105,7 @@ export default function RidePage() {
         }
 
         setBookingWithRide(data);
+        setPollError("");
 
         if (data?.ride?.status === "COMPLETED" && !redirectingToBillRef.current) {
           redirectingToBillRef.current = true;
@@ -132,6 +134,9 @@ export default function RidePage() {
         }
       } catch (err) {
         console.error("Failed to fetch booking with ride:", err);
+        if (mounted) {
+          setPollError(err instanceof Error ? err.message : t("loadFailed"));
+        }
       }
     };
 
@@ -146,16 +151,17 @@ export default function RidePage() {
   }, [bookingId]);
 
   const handleCancelRide = async () => {
-    if (bookingId) {
-      try {
-        await api.cancelBooking(bookingId);
-      } catch (error) {
-        console.error("Failed to cancel booking:", error);
-      }
+    if (!bookingId) return;
+    if (!window.confirm(t("cancelRideConfirm"))) return;
+    try {
+      await api.cancelBooking(bookingId);
+      clearActiveBookingId();
+      clearBookingFlowDraft();
+      navigate("/user/home");
+    } catch (error) {
+      console.error("Failed to cancel booking:", error);
+      alert(error instanceof Error ? error.message : t("cancelFailed"));
     }
-    clearActiveBookingId();
-    clearBookingFlowDraft();
-    navigate("/user/home");
   };
 
   const hasDriver = Boolean(bookingWithRide?.ride);
@@ -203,7 +209,12 @@ export default function RidePage() {
             {/* Waiting state — no driver yet */}
             {!hasDriver && (
               <Card className="p-8 mb-6 flex flex-col items-center text-center gap-4">
-                {isPolling ? (
+                {pollError ? (
+                  <>
+                    <p className="font-semibold text-lg mb-1 text-red-700">{t("loadFailed")}</p>
+                    <p className="text-sm text-gray-600">{pollError}</p>
+                  </>
+                ) : isPolling ? (
                   <>
                     <Loader2 className="h-12 w-12 text-black animate-spin" />
                     <div>

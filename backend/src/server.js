@@ -935,6 +935,9 @@ app.post("/driver/accept-ride/:bookingId", authRequired, async (req, res) => {
     if (!["REQUESTED", "SCHEDULED"].includes(booking.status)) {
       return res.status(400).json({ message: "Booking is no longer available." });
     }
+    if (booking.userId === userId) {
+      return res.status(400).json({ message: "You cannot accept your own booking." });
+    }
 
     const updatedBooking = await prisma.booking.update({
       where: { id: bookingId },
@@ -1285,10 +1288,23 @@ io.on("connection", (socket) => {
     }
 
     try {
-      const ride = await prisma.ride.findUnique({ where: { id: rideId } });
+      const ride = await prisma.ride.findUnique({
+        where: { id: rideId },
+        include: { driver: { select: { userId: true } } }
+      });
       if (!ride) {
         acknowledge?.({ ok: false, message: "Ride not found" });
         return;
+      }
+      if (senderRole === "USER" && ride.riderId !== senderUserId) {
+        acknowledge?.({ ok: false, message: "Sender is not the rider for this ride" });
+        return;
+      }
+      if (senderRole === "DRIVER") {
+        if (!ride.driver?.userId || ride.driver.userId !== senderUserId) {
+          acknowledge?.({ ok: false, message: "Sender is not the assigned driver for this ride" });
+          return;
+        }
       }
 
       let translatedBody = null;

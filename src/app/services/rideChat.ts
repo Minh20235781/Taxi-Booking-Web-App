@@ -1,5 +1,16 @@
 import { io, type Socket } from "socket.io-client";
-import { API_BASE_URL, type RideMessage } from "./api";
+import { API_BASE_URL, getAuthToken, type RideMessage } from "./api";
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 let socket: Socket | null = null;
 
@@ -60,7 +71,14 @@ export function subscribeRideMessages(handler: (message: RideMessage) => void) {
   };
 }
 
+/** Prefer JWT claims — localStorage auth_user is shared across tabs and can be stale. */
 export function getAuthUserId(): number | null {
+  const token = getAuthToken();
+  if (token) {
+    const payload = decodeJwtPayload(token);
+    const id = Number(payload?.sub);
+    if (Number.isInteger(id) && id > 0) return id;
+  }
   try {
     const raw = localStorage.getItem("auth_user");
     if (!raw) return null;
@@ -73,6 +91,12 @@ export function getAuthUserId(): number | null {
 }
 
 export function getAuthUserRole(): "USER" | "DRIVER" | null {
+  const token = getAuthToken();
+  if (token) {
+    const payload = decodeJwtPayload(token);
+    const role = String(payload?.role || "").toUpperCase();
+    if (role === "USER" || role === "DRIVER") return role;
+  }
   try {
     const raw = localStorage.getItem("auth_user");
     if (!raw) return null;
