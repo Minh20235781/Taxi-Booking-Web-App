@@ -794,9 +794,9 @@ app.get("/driver/ratings", authRequired, async (req, res) => {
       total: ratings.length,
       ratings: ratings.map((r) => {
         let compliments = [];
-        if (r.complimentsJson) {
+        if (r.compliments) {
           try {
-            const parsed = JSON.parse(r.complimentsJson);
+            const parsed = JSON.parse(r.compliments);
             if (Array.isArray(parsed)) compliments = parsed;
           } catch {
             /* ignore */
